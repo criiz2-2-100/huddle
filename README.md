@@ -291,3 +291,8 @@ controlled-growth system and interface are original to Huddle.
 - Local "unlimited" means no app-side token/time cap, not infinite hardware: the model's context
   window and your machine are still the real limits.
 - This is a personal prototype, not a multi-user server: no auth, and it binds to localhost only.
+
+## License
+
+Huddle is available under the [MIT License](LICENSE). You can use, modify, and share it,
+including commercially, as long as the copyright and permission notice are preserved.

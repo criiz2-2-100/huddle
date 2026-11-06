@@ -2,6 +2,7 @@
   "name": "huddle",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Huddle — a local-first Robo console for the 2-2-100 crew",
   "engines": {
