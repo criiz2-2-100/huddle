@@ -1,16 +1,73 @@
 # HUDDLE
 
-**Unit 2·2·100 — a personal huddle console where six Robos work in the open.**
+**Six local-first Robos. One roundtable. No cloud required.**
 
-Huddle is a local-first, Grok-bot-style group chat for your own machine. Six Robos — chassis
-shaped like the digits **2**, **1** and **0** — sit around a roundtable, answer you, argue with
-each other, run tools and show their expressions while they think. Everything is powered by
-[Ollama](https://ollama.com), so it runs offline and costs nothing.
+Huddle is a local-first AI crew console for your own machine. Six Robos — chassis shaped like the
+digits **2**, **1** and **0** — sit around a roundtable, answer you, challenge each other, use
+tools and show their expressions while they think. It runs on [Ollama](https://ollama.com), so the
+default setup is offline and costs nothing.
 
-The chat plumbing, Ollama bridge, streaming, voice and atomic local persistence are adapted from
-the **Vivi** project (`../vivi-ai`). The Robos, group orchestration, tool belt and interface are new.
+Built for one Operator who wants a real crew, not a single chatbot: choose who is on deck, watch
+the turn-taking, inspect every tool call, and decide how far each Robo is allowed to grow.
 
----
+[**Overview**](#at-a-glance) · [**Quick start**](#quick-start) · [**Screenshots**](#screenshots) · [**The crew**](#the-crew) · [**Features**](#what-works) · [**Architecture**](#how-it-fits-together)
+
+## At a glance
+
+- **Huddle or debate.** One pass around the active crew, or a two-pass debate where the Robos
+  answer each other.
+- **Free roam.** Send the crew to a full-screen floor, start **FREE TALK**, and let them keep the
+  conversation going until you stop them.
+- **Tools, memory and skills.** The Robos can read and write the workspace, fetch URLs, remember
+  durable notes, and adopt role-scoped craft skills while they work.
+- **Controlled growth.** A Robo can propose a new name, voice, creed and working practice. Nothing
+  lands without your approval unless you explicitly arm bounded autonomy.
+- **Bring your own engine.** Use local Ollama models, cloud tags, or any OpenAI-compatible
+  endpoint. Per-Robo overrides let one crew mix both.
+
+## Quick start
+
+**Requirements:** macOS, Windows or Linux; Node.js 18+ (tested on 22); and
+[Ollama](https://ollama.com) running with at least one model pulled.
+
+```bash
+# Terminal 1
+ollama serve
+```
+
+```bash
+# Terminal 2
+git clone https://github.com/criiz2-2-100/huddle.git
+cd huddle
+npm install
+ollama pull llama3.2
+npm run dev
+```
+
+Open **http://localhost:5180**. Huddle starts the API on port `5110` and the Vite console on port
+`5180`. On first run it creates a default room and auto-selects an installed model.
+
+Production build:
+
+```bash
+npm run build
+npm start          # serves web/dist and the API on http://localhost:5110
+```
+
+## Screenshots
+
+| The roundtable | The crew |
+| :---: | :---: |
+| [![Huddle roundtable with active Robos and transcript](live-crew.png)](live-crew.png) | [![Huddle crew panel with per-Robo models](live-crew-final.png)](live-crew-final.png) |
+| **The roundtable.** Active Robos, streaming replies, the room transcript and the controls for the next huddle. | **The crew.** Choose who is on deck, set per-Robo models and open each Robo's identity console. |
+
+| Controlled self-review | Shape a Robo |
+| :---: | :---: |
+| [![Controlled self-review and autonomy controls](live-self-deuce.png)](live-self-deuce.png) | [![Editable Robo identity proposal](live-self-fields.png)](live-self-fields.png) |
+| **Controlled self-review.** Bounded proposals, a locked unit role and Operator-armed autonomy. | **Shape a Robo.** Every proposed field is editable before approval; nothing is applied silently. |
+
+> Screenshots show a crew after several approved self-reviews. A fresh install starts with the
+> original six Robos and the default names below.
 
 ## The crew
 
@@ -70,34 +127,6 @@ little walking legs.
   composer where the browser supports it.
 - **Huddles** — multiple saved rooms, rename by double-click, auto-saved transcripts, JSON export.
 - **No account, no cloud required** — settings, rooms and memory live in `data/` on your machine.
-
-## Requirements
-
-- macOS, Windows or Linux
-- Node.js 18+ (tested on 22)
-- [Ollama](https://ollama.com) running locally with at least one model pulled
-
-```bash
-ollama serve
-ollama pull llama3.2
-```
-
-## Run it
-
-```bash
-npm install
-npm run dev
-```
-
-Open **http://localhost:5180**. The dev command starts the brain (port 5110) and the Vite console
-(port 5180) together; `Ctrl-C` stops both.
-
-Production build:
-
-```bash
-npm run build
-npm start          # serves web/dist and the API on http://localhost:5110
-```
 
 ## Choosing models
 
@@ -240,6 +269,12 @@ separate settings screen.
 The API binds to `127.0.0.1` only. State lives in `data/` and is written atomically. Settings hold
 the provider key (if any); growth identities live in `data/growth.json`; treat that folder as
 private.
+
+## Credits
+
+Huddle's chat plumbing, Ollama bridge, token streaming, voice and atomic local persistence began
+as the **Vivi** project (`../vivi-ai`). The six-Robo crew, group orchestration, tool belt,
+controlled-growth system and interface are original to Huddle.
 
 ## Known limits
 
