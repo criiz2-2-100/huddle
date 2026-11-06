@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-check:
+    name: Build UI and check server
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build Vue app
+        run: npm run build
+
+      - name: Check server syntax
+        run: |
+          set -euo pipefail
+          for file in server/*.js scripts/*.mjs; do
+            echo "Checking $file"
+            node --check "$file"
+          done
+
+      - name: Smoke-test server
+        env:
+          HUDDLE_PORT: 5110
+          HUDDLE_DATA: ${{ runner.temp }}/huddle-data
+        run: |
+          set -euo pipefail
+
+          log="$RUNNER_TEMP/huddle-server.log"
+          node server/index.js >"$log" 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl -fsS --max-time 3 http://127.0.0.1:5110/api/settings >"$RUNNER_TEMP/settings.json"; then
+              ready=1
+              break
+            fi
+            sleep 0.25
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "Huddle server did not become ready."
+            cat "$log"
+            exit 1
+          fi
+
+          curl -fsS --max-time 10 http://127.0.0.1:5110/api/health >"$RUNNER_TEMP/health.json"
+          curl -fsS http://127.0.0.1:5110/api/rooms >"$RUNNER_TEMP/rooms.json"
+          curl -fsS http://127.0.0.1:5110/ >"$RUNNER_TEMP/index.html"
+
+          grep -q '"ok":true' "$RUNNER_TEMP/health.json"
+          grep -q '"provider":"ollama"' "$RUNNER_TEMP/settings.json"
+          grep -q '"rooms":' "$RUNNER_TEMP/rooms.json"
+          grep -qi '<!doctype html>' "$RUNNER_TEMP/index.html"
+          echo "Server API and built UI responded successfully."
