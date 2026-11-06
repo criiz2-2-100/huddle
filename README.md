@@ -1,5 +1,7 @@
 # HUDDLE
 
+[![CI](https://github.com/criiz2-2-100/huddle/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/criiz2-2-100/huddle/actions/workflows/ci.yml)
+
 **Six local-first Robos. One roundtable. No cloud required.**
 
 Huddle is a local-first AI crew console for your own machine. Six Robos — chassis shaped like the
