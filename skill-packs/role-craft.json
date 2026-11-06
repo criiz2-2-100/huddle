@@ -1,0 +1,227 @@
+{
+  "pack": "Huddle Role Craft",
+  "version": 1,
+  "description": "Role-scoped craft procedures for Huddle Robos. Seeded entries are installed on first run; the rest can be discovered and adopted during work.",
+  "source": "repo:skill-packs/role-craft.json",
+  "updatedAt": "2026-11-05",
+  "adoption": "Search with search_skill_catalog, read the matching entry with read_skill_catalog, then adopt it by id with adopt_skill.",
+  "entries": [
+    {
+      "id": "strat-decision-frame",
+      "roboId": "deuce",
+      "role": "Strategist",
+      "name": "Decision Frame",
+      "summary": "Turn a messy request into a decision, a reason and a next move.",
+      "trigger": "When a request has several possible directions and no clear decision yet.",
+      "invocation": "Follow these steps during planning; adopt first if this is not already on your shelf.",
+      "steps": [
+        "Name the decision that has to be made and the constraint that matters most.",
+        "List two viable moves and the trade-off that separates them.",
+        "Recommend one move, name the first concrete action and the check that proves it worked."
+      ],
+      "rationale": "It keeps strategic work pointed at a decision instead of a survey of options.",
+      "source": "repo:skill-packs/role-craft.json#strat-decision-frame",
+      "tags": ["planning", "decision", "trade-offs"],
+      "seed": true
+    },
+    {
+      "id": "strat-pre-mortem",
+      "roboId": "deuce",
+      "role": "Strategist",
+      "name": "Pre-Mortem",
+      "summary": "Find the failure modes in a plan before it becomes a commitment.",
+      "trigger": "Before committing to a risky plan, launch, migration or multi-step build.",
+      "invocation": "Use before execution; adopt this entry when the task needs a risk pass.",
+      "steps": [
+        "Assume the plan failed after two weeks and name the three most likely causes.",
+        "Separate preventable causes from accepted risks.",
+        "Add one guardrail and one stop condition before execution starts."
+      ],
+      "rationale": "A pre-mortem turns optimism into explicit failure handling while there is still time to change the plan.",
+      "source": "repo:skill-packs/role-craft.json#strat-pre-mortem",
+      "tags": ["risk", "planning", "pre-mortem"],
+      "seed": false
+    },
+    {
+      "id": "eng-failing-test-triage",
+      "roboId": "uno",
+      "role": "Engineer",
+      "name": "Failing Test Triage",
+      "summary": "Find the first broken assumption behind a failing test.",
+      "trigger": "When a test fails and the cause is not yet isolated.",
+      "invocation": "Follow these steps during debugging; adopt first if this is not already on your shelf.",
+      "steps": [
+        "Read the failure and the smallest code path it exercises.",
+        "Reproduce it with one targeted command or test run.",
+        "State the broken assumption, fix the narrowest cause, and rerun that test before widening the change."
+      ],
+      "rationale": "It keeps debugging narrow enough to learn the cause instead of masking it with broad edits.",
+      "source": "repo:skill-packs/role-craft.json#eng-failing-test-triage",
+      "tags": ["testing", "debugging", "diagnosis"],
+      "seed": true
+    },
+    {
+      "id": "eng-migration-safety",
+      "roboId": "uno",
+      "role": "Engineer",
+      "name": "Migration Safety Pass",
+      "summary": "Review a schema or data migration for lock, rollback and deploy-order risk.",
+      "trigger": "Before changing a schema, running a migration, or reviewing a migration plan.",
+      "invocation": "Adopt this entry, then apply every step to the migration under review.",
+      "steps": [
+        "State the schema change, row count, lock risk and rollback path before touching the database.",
+        "Check for a backward-compatible expand/contract sequence; never make a destructive change in one deploy.",
+        "Verify the migration against a staging copy with production-shaped row counts and a timed rollback.",
+        "Name the exact success checks and the abort threshold before execution."
+      ],
+      "rationale": "A migration review catches lock and rollback failures before they reach live traffic.",
+      "source": "repo:skill-packs/role-craft.json#eng-migration-safety",
+      "tags": ["database", "migration", "safety", "deploy"],
+      "seed": false
+    },
+    {
+      "id": "crit-assumption-audit",
+      "roboId": "null",
+      "role": "Critic",
+      "name": "Assumption Audit",
+      "summary": "Expose the unstated premises a plan is resting on.",
+      "trigger": "When a plan sounds coherent but rests on unstated premises.",
+      "invocation": "Follow these steps during review; adopt first if this is not already on your shelf.",
+      "steps": [
+        "Write the three assumptions the plan cannot survive without.",
+        "Mark each as tested, untested or contradicted, with the evidence.",
+        "Name the cheapest test for the most dangerous untested assumption."
+      ],
+      "rationale": "It moves criticism from taste to evidence and gives the Operator a testable next step.",
+      "source": "repo:skill-packs/role-craft.json#crit-assumption-audit",
+      "tags": ["review", "assumptions", "evidence"],
+      "seed": true
+    },
+    {
+      "id": "crit-adversarial-review",
+      "roboId": "null",
+      "role": "Critic",
+      "name": "Adversarial Review",
+      "summary": "Stress a proposal the way production will.",
+      "trigger": "When a proposal is about to ship and needs a hostile read.",
+      "invocation": "Adopt this entry before the review, then apply it to the actual proposal.",
+      "steps": [
+        "State the strongest case for why the proposal fails in production.",
+        "Find the failure mode the author is least likely to have measured.",
+        "Give one concrete change that removes or exposes that failure mode."
+      ],
+      "rationale": "An adversarial pass finds the failure the happy-path review missed.",
+      "source": "repo:skill-packs/role-craft.json#crit-adversarial-review",
+      "tags": ["review", "failure-modes", "production"],
+      "seed": false
+    },
+    {
+      "id": "res-source-reliability",
+      "roboId": "duet",
+      "role": "Researcher",
+      "name": "Source Reliability Check",
+      "summary": "Separate primary evidence from summaries and unsupported claims.",
+      "trigger": "When a conclusion depends on sources whose quality is not yet clear.",
+      "invocation": "Follow these steps while gathering evidence; adopt first if this is not already on your shelf.",
+      "steps": [
+        "Separate primary evidence from summaries and commentary.",
+        "Check who produced each claim and when it was last updated.",
+        "Label each key claim as verified, inferred or unresolved."
+      ],
+      "rationale": "It prevents confident synthesis from hiding weak or stale evidence.",
+      "source": "repo:skill-packs/role-craft.json#res-source-reliability",
+      "tags": ["research", "sources", "evidence"],
+      "seed": true
+    },
+    {
+      "id": "res-evidence-synthesis",
+      "roboId": "duet",
+      "role": "Researcher",
+      "name": "Evidence Synthesis",
+      "summary": "Turn scattered sources into a decision-ready answer with the weakest link named.",
+      "trigger": "When several sources must be reconciled before a decision.",
+      "invocation": "Adopt this entry when the task needs synthesis, then follow the steps.",
+      "steps": [
+        "Group the evidence by the claim it supports, not by source.",
+        "State where sources agree, where they conflict and what is still unknown.",
+        "Give the decision-ready conclusion with the weakest link called out."
+      ],
+      "rationale": "It makes the uncertainty explicit instead of averaging conflicting sources into false confidence.",
+      "source": "repo:skill-packs/role-craft.json#res-evidence-synthesis",
+      "tags": ["research", "synthesis", "uncertainty"],
+      "seed": false
+    },
+    {
+      "id": "ops-command-preflight",
+      "roboId": "ion",
+      "role": "Operator",
+      "name": "Command Preflight",
+      "summary": "Check a state-changing command before it runs.",
+      "trigger": "Before running a shell command that changes state.",
+      "invocation": "Follow these steps before execution; adopt first if this is not already on your shelf.",
+      "steps": [
+        "State the exact command, working directory and expected effect.",
+        "Confirm the command is reversible and capture the current state.",
+        "Run the narrowest version, inspect the result, then widen only if it is clean."
+      ],
+      "rationale": "A short preflight catches the most expensive operator mistakes before they happen.",
+      "source": "repo:skill-packs/role-craft.json#ops-command-preflight",
+      "tags": ["operations", "safety", "shell"],
+      "seed": true
+    },
+    {
+      "id": "ops-incident-timeline",
+      "roboId": "ion",
+      "role": "Operator",
+      "name": "Incident Timeline",
+      "summary": "Reconstruct an operational failure as a causal timeline.",
+      "trigger": "During or immediately after an operational failure.",
+      "invocation": "Adopt this entry for the incident review, then apply the steps to the evidence.",
+      "steps": [
+        "Record the first observed symptom and the last known good state.",
+        "Order events by timestamp and mark the action that changed the system.",
+        "End with the smallest prevention and the check that proves it."
+      ],
+      "rationale": "A causal timeline separates the trigger from the damage and points to one preventive change.",
+      "source": "repo:skill-packs/role-craft.json#ops-incident-timeline",
+      "tags": ["operations", "incident", "timeline"],
+      "seed": false
+    },
+    {
+      "id": "arch-durable-summary",
+      "roboId": "zero",
+      "role": "Archivist",
+      "name": "Durable Summary",
+      "summary": "Preserve decisions, evidence and open questions so later work can continue.",
+      "trigger": "When a room has produced decisions, constraints and open questions that must survive.",
+      "invocation": "Follow these steps when closing a work session; adopt first if this is not already on your shelf.",
+      "steps": [
+        "Keep the decisions, constraints, evidence and open questions separate.",
+        "Attribute every claim to its speaker or source.",
+        "Write the next action with an owner and a verification point."
+      ],
+      "rationale": "A durable summary lets the next turn resume from evidence instead of re-litigating the room.",
+      "source": "repo:skill-packs/role-craft.json#arch-durable-summary",
+      "tags": ["memory", "summary", "continuity"],
+      "seed": true
+    },
+    {
+      "id": "arch-decision-log",
+      "roboId": "zero",
+      "role": "Archivist",
+      "name": "Decision Log",
+      "summary": "Record a decision and the condition that would reopen it.",
+      "trigger": "When a decision will affect later work or another Robo.",
+      "invocation": "Adopt this entry when maintaining the record, then follow the steps.",
+      "steps": [
+        "Record the decision, date, decision-maker and the problem it resolves.",
+        "List the alternatives rejected and the reason.",
+        "Name the condition that would reopen the decision."
+      ],
+      "rationale": "A decision log preserves intent, not just the outcome, so future work does not silently reverse it.",
+      "source": "repo:skill-packs/role-craft.json#arch-decision-log",
+      "tags": ["memory", "decisions", "audit"],
+      "seed": false
+    }
+  ]
+}
