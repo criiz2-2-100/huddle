@@ -1,13 +1,14 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_ROLE_ASSIGNMENTS } from './roles.js'
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url))
 
 export const ROOT = path.resolve(SERVER_DIR, '..')
-const dataDirOverride = process.env.HUDDLE_DATA
+const dataDirOverride = process.env.RALLY_DATA
 export const DATA_DIR = dataDirOverride ? path.resolve(dataDirOverride) : path.join(ROOT, 'data')
 export const DIST_DIR = path.join(ROOT, 'web', 'dist')
-export const PORT = Number(process.env.HUDDLE_PORT || 5110)
+export const PORT = Number(process.env.RALLY_PORT || 5110)
 export const MAX_BODY_BYTES = 1_000_000
 
 /** Models we reach for first when nobody has chosen one yet. All local. */
@@ -63,11 +64,14 @@ export const TOOL_NAMES = [
 
 export const DEFAULT_SETTINGS = {
   provider: 'ollama',
-  ollamaUrl: process.env.HUDDLE_OLLAMA_URL || 'http://localhost:11434',
+  ollamaUrl: process.env.RALLY_OLLAMA_URL || 'http://localhost:11434',
   openaiBaseUrl: 'https://openrouter.ai/api/v1',
   openaiKey: '',
-  model: process.env.HUDDLE_MODEL || '',
+  model: process.env.RALLY_MODEL || '',
   roboModels: ROLE_MODEL_DEFAULTS,
+  growthModels: { identity: '', skills: '' },
+  roboGrowthModels: {},
+  roles: { ...DEFAULT_ROLE_ASSIGNMENTS },
   active: ['deuce', 'uno', 'null'],
   maxSpeakers: 3,
   temperature: 0.85,
@@ -75,6 +79,8 @@ export const DEFAULT_SETTINGS = {
   allowWrite: false,
   allowShell: false,
   autonomy: false,
-  workspace: ROOT,
+  workspace: path.resolve(process.env.RALLY_WORKSPACE || ROOT),
   autoSpeak: false,
+  bossAuto: true,
+  remoteAccess: false,
 }

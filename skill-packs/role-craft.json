@@ -1,7 +1,7 @@
 {
-  "pack": "Huddle Role Craft",
+  "pack": "Rally Up Bots Role Craft",
   "version": 1,
-  "description": "Role-scoped craft procedures for Huddle Robos. Seeded entries are installed on first run; the rest can be discovered and adopted during work.",
+  "description": "Role-scoped craft procedures for Rally Up Bots. Seeded entries are installed on first run; the rest can be discovered and adopted during work.",
   "source": "repo:skill-packs/role-craft.json",
   "updatedAt": "2026-11-05",
   "adoption": "Search with search_skill_catalog, read the matching entry with read_skill_catalog, then adopt it by id with adopt_skill.",

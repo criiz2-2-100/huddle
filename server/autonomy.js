@@ -6,9 +6,9 @@ import { MAX_SKILLS, addSkill, reflectSkill } from './skills.js'
 /**
  * Operator-armed autonomy.
  *
- * The Operator turns autonomy on. After a huddle, one speaking Robo may run one
- * local reflection: it can apply a bounded personal identity/practice update and
- * one role-scoped skill. It can never change the unit role, unit creed, serial,
+ * The Operator turns autonomy on. After a rally, one speaking Robo may run one
+ * reflection: it can apply a bounded personal identity/practice update and one
+ * role-scoped skill. It can never change the unit role, unit creed, serial,
  * tools permissions, safety rules or the Operator's authority. Cooldowns and
  * hard caps prevent runaway self-modification.
  */
@@ -50,7 +50,8 @@ async function appendLog(entry) {
 
 /**
  * Run one autonomy cycle for a Robo. Called by the Operator's Run Now button and
- * by the post-huddle scheduler. Local model calls have no app token/time budget.
+ * by the post-rally scheduler. Local calls have no app token/time budget; a
+ * configured cloud model keeps the bounded reflection timeout.
  */
 export async function runAutonomy({ roboId, room, settings, reason = 'work' }) {
   const robo = ROBOS_BY_ID.get(roboId)
@@ -163,16 +164,16 @@ export async function runAutonomy({ roboId, room, settings, reason = 'work' }) {
 }
 
 /**
- * Fire-and-forget after a huddle. One Robo per huddle keeps local work bounded
- * while every speaking Robo gets a turn across successive huddles.
+ * Fire-and-forget after a rally. One Robo per rally keeps local work bounded
+ * while every speaking Robo gets a turn across successive rallies.
  */
 export function scheduleAutonomy({ room, settings, roboIds }) {
   if (!settings?.autonomy) return ''
   const roboId = [...new Set(roboIds || [])].find((id) => ROBOS_BY_ID.has(id))
   if (!roboId) return ''
   const timer = setTimeout(() => {
-    runAutonomy({ roboId, room, settings, reason: 'a completed huddle' }).catch((error) => {
-      if (Number(error.status) !== 409) console.error('[huddle] autonomy failed:', error.message)
+    runAutonomy({ roboId, room, settings, reason: 'a completed rally' }).catch((error) => {
+      if (Number(error.status) !== 409) console.error('[rally] autonomy failed:', error.message)
     })
   }, 350)
   timer.unref?.()

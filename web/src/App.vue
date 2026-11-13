@@ -1,9 +1,9 @@
 <template>
   <div v-if="loading" class="boot">
     <div class="boot-mark" aria-hidden="true">
-      <span style="--c: #3ee6ff">2</span>
-      <span style="--c: #ffc24a">1</span>
-      <span style="--c: #ff5fa8">0</span>
+      <RoboAvatar glyph="2" color="#3ee6ff" state="idle" :size="60" :seed="1" />
+      <RoboAvatar glyph="1" color="#ffc24a" state="idle" :size="60" :seed="2" />
+      <RoboAvatar glyph="0" color="#ff5fa8" state="idle" :size="60" :seed="3" />
     </div>
     <p class="mono">SPINNING UP UNIT 2·2·100</p>
   </div>
@@ -30,15 +30,15 @@
 
     <main class="main">
       <header class="topbar">
-        <button class="icon-btn only-narrow" aria-label="Open huddles" @click="leftOpen = true">
+        <button class="icon-btn only-narrow" aria-label="Open rallies" @click="leftOpen = true">
           ☰
         </button>
         <div class="room-head">
-          <h1>{{ room?.name || 'Huddle' }}</h1>
+          <h1>{{ room?.name || 'Rally Up' }}</h1>
           <p class="mono">
             <span class="unit">2·2·100</span><span class="sep">·</span>
             {{ activeIds.length }} ON DECK<span class="sep">·</span>
-            <span :class="{ live: running }">{{ running ? 'HUDDLE LIVE' : 'STANDING BY' }}</span>
+            <span :class="{ live: running }">{{ running ? 'RALLY LIVE' : 'STANDING BY' }}</span>
           </p>
         </div>
         <div class="top-actions">
@@ -49,6 +49,7 @@
           <span class="pill model-pill" :title="settings.model || 'No model selected'">
             {{ shortModel }}
           </span>
+          <button class="btn ghost role-link" @click="openRoleDeck">Roles</button>
           <a v-if="room" class="btn ghost" :href="exportHref" download>Export</a>
           <button class="btn ghost only-narrow" @click="openInspectorTab('crew')">Crew</button>
         </div>
@@ -107,6 +108,11 @@
       :model-meta="modelMeta"
       :saving="savingSettings"
       :open="rightOpen"
+      :boss="boss"
+      :boss-running="bossRunning"
+      :remote="remote"
+      :host-local="health.local !== false"
+      :remote-busy="remoteBusy"
       @update:tab="openInspectorTab"
       @close="rightOpen = false"
       @toggle="toggleRobo"
@@ -118,6 +124,13 @@
       @refresh="retryLink"
       @free="startFreeTalk"
       @stop="stop"
+      @open-roles="openRoleDeck"
+      @preset="applyCrewPreset"
+      @run-boss="runBoss"
+      @toggle-boss-auto="toggleBossAuto"
+      @remote-toggle="toggleRemote"
+      @remote-rotate="rotateRemote"
+      @copy-remote="copyRemoteLink"
     />
 
     <div class="scrim" :class="{ show: leftOpen || rightOpen }" @click="closeDrawers"></div>
@@ -134,8 +147,26 @@
       :model="settings.model"
       :provider="health.provider"
       :linked="health.linked"
+      :settings="settings"
+      :models="models"
       @close="identityOpen = false"
       @updated="onIdentityUpdated"
+    />
+
+    <RoleDeck
+      v-if="roleDeckOpen"
+      :robos="roster"
+      :roles="roles"
+      :assignments="roleAssignments"
+      :active-ids="activeIds"
+      :last-mission="lastMission"
+      :reasons="roleReasons"
+      :fit-busy="roleBusy"
+      @close="roleDeckOpen = false"
+      @set-role="setMissionRole"
+      @fit="fitRoles"
+      @preset="applyCrewPreset"
+      @defaults="resetRoles"
     />
   </div>
 </template>
@@ -146,27 +177,35 @@ import Transcript from './components/Transcript.vue'
 import Composer from './components/Composer.vue'
 import Inspector from './components/Inspector.vue'
 import IdentityConsole from './components/IdentityConsole.vue'
+import RoleDeck from './components/RoleDeck.vue'
+import RoboAvatar from './components/RoboAvatar.vue'
 import {
   abortRun,
   clearMemory as clearMemoryApi,
   createRoom,
+  getBoss,
   getHealth,
   getMemory,
   getModels,
+  getRemote,
+  getRoles,
   getRoom,
   getRooms,
   getRoster,
   getSettings,
+  recommendRoles,
   removeRoom,
   renameRoom,
+  rotateRemoteLink,
+  runBossReview,
   saveSettings,
-  streamHuddle,
+  streamRally,
 } from './api'
 import { speak, stopSpeaking } from './voice'
 
 export default {
-  name: 'HuddleApp',
-  components: { Sidebar, Transcript, Composer, Inspector, IdentityConsole },
+  name: 'RallyUpApp',
+  components: { Sidebar, Transcript, Composer, Inspector, IdentityConsole, RoleDeck, RoboAvatar },
   data() {
     return {
       roster: [],
@@ -175,7 +214,7 @@ export default {
       room: null,
       models: [],
       modelMeta: { linked: false, error: '', suggested: '' },
-      health: { linked: false, provider: 'ollama', count: 0, model: '' },
+      health: { linked: false, provider: 'ollama', count: 0, model: '', local: true },
       memory: {},
       loading: true,
       fatal: '',
@@ -188,7 +227,7 @@ export default {
       speakerId: '',
       turnLabel: '',
       liveText: '',
-      mode: 'huddle',
+      mode: 'rally',
       freeRunning: false,
       inspectorTab: 'stage',
       rightOpen: false,
@@ -198,6 +237,16 @@ export default {
       savingSettings: false,
       identityOpen: false,
       identityId: '',
+      roles: [],
+      roleAssignments: {},
+      roleDefaults: {},
+      roleReasons: {},
+      roleDeckOpen: false,
+      roleBusy: false,
+      boss: { report: null, due: true, auto: true, running: false },
+      bossRunning: false,
+      remote: { enabled: false, url: '', host: '', port: 0, lan: false, error: '' },
+      remoteBusy: false,
     }
   },
   computed: {
@@ -219,6 +268,11 @@ export default {
     maxSpeakers() {
       return this.settings?.maxSpeakers || 3
     },
+    lastMission() {
+      const messages = this.room?.messages || []
+      const last = [...messages].reverse().find((message) => message.role === 'user')
+      return last?.text || ''
+    },
   },
   mounted() {
     this.boot()
@@ -238,16 +292,28 @@ export default {
       this.loading = true
       this.fatal = ''
       try {
-        const [rosterRes, settings, modelsRes, roomsRes, health, memoryRes] = await Promise.all([
-          getRoster(),
-          getSettings(),
-          getModels(),
-          getRooms(),
-          getHealth(),
-          getMemory(),
-        ])
+        const [rosterRes, settings, modelsRes, roomsRes, health, memoryRes, rolesRes, bossRes] =
+          await Promise.all([
+            getRoster(),
+            getSettings(),
+            getModels(),
+            getRooms(),
+            getHealth(),
+            getMemory(),
+            getRoles(),
+            getBoss(),
+          ])
 
         this.roster = rosterRes.robos || []
+        this.roles = rolesRes.roles || []
+        this.roleDefaults = rolesRes.defaults || {}
+        this.roleAssignments = rolesRes.assignments || settings.roles || {}
+        this.boss = {
+          ...bossRes,
+          report: bossRes.report || null,
+          due: Boolean(bossRes.due),
+          auto: bossRes.auto !== false,
+        }
         this.models = modelsRes.models || []
         this.modelMeta = {
           linked: Boolean(modelsRes.linked),
@@ -264,11 +330,14 @@ export default {
           resolved = await saveSettings({ model: modelsRes.suggested })
         }
         this.settings = resolved
+        this.roleAssignments = resolved.roles || this.roleAssignments
+
+        if (health.local !== false) await this.loadRemote()
 
         if (this.rooms.length) {
           await this.openRoom(this.rooms[0].id, true)
         } else {
-          const room = await createRoom('Huddle 01')
+          const room = await createRoom('Rally 01')
           this.room = room
           await this.refreshRooms()
         }
@@ -279,6 +348,10 @@ export default {
               ? 'No online key yet — open Setup.'
               : 'Ollama is offline. Run `ollama serve`.',
           )
+        }
+
+        if (this.boss.due && this.boss.auto) {
+          window.setTimeout(() => this.runBoss(false, true), 120)
         }
       } catch (error) {
         this.fatal = error.message
@@ -298,7 +371,7 @@ export default {
 
     async openRoom(id, initial = false) {
       if (!initial && this.running) {
-        this.toastNow('Stop the huddle before switching rooms.')
+        this.toastNow('Stop the rally before switching rooms.')
         return
       }
       try {
@@ -321,11 +394,11 @@ export default {
 
     async newRoom() {
       if (this.running) {
-        this.toastNow('Stop the huddle first.')
+        this.toastNow('Stop the rally first.')
         return
       }
       try {
-        const name = `Huddle ${String(this.rooms.length + 1).padStart(2, '0')}`
+        const name = `Rally ${String(this.rooms.length + 1).padStart(2, '0')}`
         const room = await createRoom(name)
         await this.refreshRooms()
         await this.openRoom(room.id)
@@ -348,17 +421,17 @@ export default {
 
     async removeRoomById(id) {
       if (this.running) {
-        this.toastNow('Stop the huddle first.')
+        this.toastNow('Stop the rally first.')
         return
       }
-      if (!window.confirm('Delete this huddle and its transcript?')) return
+      if (!window.confirm('Delete this rally and its transcript?')) return
       try {
         await removeRoom(id)
         await this.refreshRooms()
         if (this.room?.id !== id) return
         if (this.rooms.length) await this.openRoom(this.rooms[0].id)
         else {
-          const room = await createRoom('Huddle 01')
+          const room = await createRoom('Rally 01')
           await this.refreshRooms()
           await this.openRoom(room.id)
         }
@@ -378,7 +451,7 @@ export default {
     },
 
     /* ---------------------------------------------------------------- */
-    /* The huddle                                                        */
+    /* The rally                                                         */
     /* ---------------------------------------------------------------- */
 
     resolveTargets(text) {
@@ -419,7 +492,7 @@ export default {
 
       try {
         this.toastNow('Free roam live — the floor is open.')
-        await streamHuddle(
+        await streamRally(
           { roomId, text: '', targets, mode: 'free' },
           { signal: controller.signal, onEvent: this.handleEvent },
         )
@@ -472,7 +545,7 @@ export default {
       const roomId = this.room.id
 
       try {
-        await streamHuddle(
+        await streamRally(
           { roomId, text: clean, targets, mode: this.mode },
           { signal: controller.signal, onEvent: this.handleEvent },
         )
@@ -605,14 +678,14 @@ export default {
       }
 
       if (event.type === 'aborted') {
-        this.pushSystem('Huddle stopped by the Operator.')
+        this.pushSystem('Rally stopped by the Operator.')
       }
     },
 
     stop() {
       if (!this.running) return
       this.wasAborted = true
-      this.toastNow('Stopping the huddle…')
+      this.toastNow('Stopping the rally…')
       this.controller?.abort()
       if (this.runId) abortRun(this.runId)
       stopSpeaking()
@@ -652,7 +725,7 @@ export default {
     /* ---------------------------------------------------------------- */
 
     setMode(mode) {
-      this.mode = mode === 'debate' ? 'debate' : 'huddle'
+      this.mode = mode === 'debate' ? 'debate' : 'rally'
     },
 
     async toggleRobo(id) {
@@ -675,7 +748,7 @@ export default {
       if (!robo) return
       try {
         this.settings = await saveSettings({ active: [id] })
-        this.mode = 'huddle'
+        this.mode = 'rally'
         this.toastNow(`1:1 with ${robo.name}.`)
       } catch (error) {
         this.toastNow(error.message)
@@ -719,6 +792,7 @@ export default {
       this.savingSettings = true
       try {
         this.settings = await saveSettings(patch)
+        this.roleAssignments = this.settings.roles || this.roleAssignments
         await this.refreshModels(true)
         this.toastNow('Setup saved.')
       } catch (error) {
@@ -764,7 +838,184 @@ export default {
       this.identityOpen = true
     },
 
+    openRoleDeck() {
+      this.roleReasons = {}
+      this.roleDeckOpen = true
+    },
+
+    async persistRoleAssignments(assignments, message = '') {
+      const saved = await saveSettings({ roles: assignments })
+      this.settings = saved
+      this.roleAssignments = saved.roles || assignments
+      await this.refreshRoster()
+      if (message) this.toastNow(message)
+    },
+
+    async setMissionRole({ id, roleId }) {
+      if (!id || !roleId) return
+      const reasons = { ...this.roleReasons }
+      delete reasons[id]
+      this.roleReasons = reasons
+      this.roleBusy = true
+      try {
+        await this.persistRoleAssignments({ ...this.roleAssignments, [id]: roleId })
+      } catch (error) {
+        this.toastNow(error.message)
+      } finally {
+        this.roleBusy = false
+      }
+    },
+
+    async fitRoles(text) {
+      if (!text?.trim()) return
+      this.roleBusy = true
+      try {
+        const result = await recommendRoles({ text, roboIds: this.activeIds })
+        this.roleReasons = result.reasons || {}
+        await this.persistRoleAssignments(
+          { ...this.roleAssignments, ...(result.assignments || {}) },
+          result.summary || 'Mission roles fitted.',
+        )
+      } catch (error) {
+        this.toastNow(error.message)
+      } finally {
+        this.roleBusy = false
+      }
+    },
+
+    async resetRoles() {
+      this.roleBusy = true
+      try {
+        this.roleReasons = {}
+        await this.persistRoleAssignments(this.roleDefaults, 'Mission roles reset to unit defaults.')
+      } catch (error) {
+        this.toastNow(error.message)
+      } finally {
+        this.roleBusy = false
+      }
+    },
+
+    async applyCrewPreset(kind) {
+      const all = this.roster.map((robo) => robo.id)
+      const ids =
+        kind === 'solo'
+          ? [all[0]].filter(Boolean)
+          : kind === 'duo'
+            ? all.slice(0, 2)
+            : all
+      if (!ids.length) return
+      try {
+        this.settings = await saveSettings({
+          active: ids,
+          maxSpeakers: Math.min(6, Math.max(1, ids.length)),
+        })
+        this.mode = 'rally'
+        this.toastNow(
+          kind === 'solo' ? 'Solo seat set.' : kind === 'duo' ? 'Duo set.' : 'Full crew on deck.',
+        )
+      } catch (error) {
+        this.toastNow(error.message)
+      }
+    },
+
+    async runBoss(force = false, silent = false) {
+      if (this.bossRunning) return
+      this.bossRunning = true
+      this.boss = { ...this.boss, running: true }
+      try {
+        const result = await runBossReview(Boolean(force))
+        this.boss = {
+          ...this.boss,
+          report: result.report || this.boss.report,
+          due: Boolean(result.due),
+          running: false,
+        }
+        if (!silent) {
+          this.toastNow(
+            result.cached
+              ? 'Boss review is already current.'
+              : result.report?.source === 'offline'
+                ? 'Boss review ready from local signals.'
+                : 'Boss review ready.',
+          )
+        }
+      } catch (error) {
+        this.boss = { ...this.boss, running: false }
+        if (!silent) this.toastNow(error.message)
+      } finally {
+        this.bossRunning = false
+      }
+    },
+
+    async toggleBossAuto(value) {
+      try {
+        this.settings = await saveSettings({ bossAuto: Boolean(value) })
+        this.boss = { ...this.boss, auto: Boolean(value) }
+        this.toastNow(value ? 'Boss will run a daily review.' : 'Boss daily review paused.')
+        if (value && this.boss.due) this.runBoss(false, true)
+      } catch (error) {
+        this.toastNow(error.message)
+      }
+    },
+
+    async loadRemote() {
+      if (this.health?.local === false) return
+      try {
+        this.remote = await getRemote()
+      } catch {
+        /* the host view stays usable if the phone link is unavailable */
+      }
+    },
+
+    async toggleRemote(enabled) {
+      this.remoteBusy = true
+      try {
+        this.settings = await saveSettings({ remoteAccess: Boolean(enabled) })
+        this.remote = await getRemote()
+        if (this.remote.error) this.toastNow(this.remote.error)
+        else this.toastNow(enabled ? 'Phone link is live on this Wi-Fi.' : 'Phone link closed.')
+      } catch (error) {
+        this.toastNow(error.message)
+      } finally {
+        this.remoteBusy = false
+      }
+    },
+
+    async rotateRemote() {
+      this.remoteBusy = true
+      try {
+        this.remote = await rotateRemoteLink()
+        this.toastNow('Phone link key rotated. Old links are dead.')
+      } catch (error) {
+        this.toastNow(error.message)
+      } finally {
+        this.remoteBusy = false
+      }
+    },
+
+    async copyRemoteLink() {
+      if (!this.remote?.url) return
+      try {
+        await navigator.clipboard.writeText(this.remote.url)
+      } catch {
+        const input = document.createElement('textarea')
+        input.value = this.remote.url
+        input.style.position = 'fixed'
+        input.style.opacity = '0'
+        document.body.appendChild(input)
+        input.select()
+        document.execCommand('copy')
+        input.remove()
+      }
+      this.toastNow('Phone link copied.')
+    },
+
     async onIdentityUpdated() {
+      try {
+        this.settings = await getSettings()
+      } catch {
+        /* keep the current settings if the refresh fails */
+      }
       await this.refreshRoster()
       await this.refreshRooms()
     },
@@ -784,6 +1035,15 @@ export default {
     },
 
     onKeydown(event) {
+      if (event.key === 'Escape' && this.roleDeckOpen) {
+        this.roleDeckOpen = false
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        this.openRoleDeck()
+        return
+      }
       if (event.key === 'Escape') this.closeDrawers()
     },
 
@@ -923,6 +1183,16 @@ export default {
   transition: opacity 0.2s ease;
 }
 
+.role-link {
+  color: var(--mint);
+}
+
+@media (max-width: 1120px) {
+  .role-link {
+    display: none;
+  }
+}
+
 .toast {
   position: fixed;
   z-index: 100;
@@ -967,26 +1237,17 @@ export default {
 
 .boot-mark {
   display: flex;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 7px;
+  height: 92px;
 }
 
-.boot-mark span {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 47px;
-  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--c) 8%, transparent);
-  color: var(--c);
-  font-family: var(--mono);
-  font-size: 24px;
-  font-weight: 700;
-  box-shadow: 0 0 20px color-mix(in srgb, var(--c) 16%, transparent);
+.boot-mark :deep(.robo) {
+  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.34));
 }
 
-.boot-mark span:nth-child(2) {
-  transform: translateY(-5px);
+.boot-mark :deep(.robo:nth-child(2)) {
+  transform: translateY(-7px);
 }
 
 .boot > p.mono {
@@ -1056,6 +1317,7 @@ export default {
 @media (max-width: 899px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    height: 100dvh;
   }
 
   .main {

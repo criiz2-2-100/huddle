@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Huddle dev launcher: local brain (API + Ollama bridge) and the Vite console.
+ * Rally Up Bots dev launcher: local brain (API + Ollama bridge) and the Vite console.
  * Reuses the Vivi start pattern: one command, both processes, clean shutdown.
  */
 import { spawn } from 'node:child_process'
@@ -9,8 +9,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const apiPort = process.env.HUDDLE_PORT || '5110'
-const uiPort = process.env.HUDDLE_UI_PORT || '5180'
+const apiPort = process.env.RALLY_PORT || '5110'
+const uiPort = process.env.RALLY_UI_PORT || '5180'
 const children = []
 let exiting = false
 
@@ -44,17 +44,17 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 if (!existsSync(path.join(root, 'node_modules', 'vite'))) {
-  console.error('[huddle] Dependencies are missing. Run `npm install` first.')
+  console.error('[rally] Dependencies are missing. Run `npm install` first.')
   process.exit(1)
 }
 
-launch('brain', 'node', ['server/index.js'], { HUDDLE_PORT: apiPort })
+launch('brain', 'node', ['server/index.js'], { RALLY_PORT: apiPort })
 launch('ui', 'npx', ['vite', '--port', uiPort, '--strictPort'], {
-  HUDDLE_PORT: apiPort,
-  HUDDLE_UI_PORT: uiPort,
+  RALLY_PORT: apiPort,
+  RALLY_UI_PORT: uiPort,
 })
 
-console.log(`\n  HUDDLE · 2·2·100\n  console  → http://localhost:${uiPort}\n  brain    → http://127.0.0.1:${apiPort}\n`)
+console.log(`\n  RALLY UP · BOTS · 2·2·100\n  console  → http://localhost:${uiPort}\n  brain    → http://127.0.0.1:${apiPort}\n`)
 
 setTimeout(async () => {
   try {

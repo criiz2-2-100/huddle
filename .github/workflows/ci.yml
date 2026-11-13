@@ -38,12 +38,12 @@ jobs:
 
       - name: Smoke-test server
         env:
-          HUDDLE_PORT: 5110
-          HUDDLE_DATA: ${{ runner.temp }}/huddle-data
+          RALLY_PORT: 5110
+          RALLY_DATA: ${{ runner.temp }}/rally-data
         run: |
           set -euo pipefail
 
-          log="$RUNNER_TEMP/huddle-server.log"
+          log="$RUNNER_TEMP/rally-server.log"
           node server/index.js >"$log" 2>&1 &
           server_pid=$!
           cleanup() {
@@ -62,7 +62,7 @@ jobs:
           done
 
           if [ "$ready" -ne 1 ]; then
-            echo "Huddle server did not become ready."
+            echo "Rally Up Bots server did not become ready."
             cat "$log"
             exit 1
           fi

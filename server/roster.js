@@ -1,5 +1,5 @@
 /**
- * The 2·2·100 Robos. Each chassis is one glyph — a 2, a 1 or a 0 —
+ * The 2·2·100 Robos. Each one wears a shirt printed with a 2, a 1 or a 0,
  * with a face plate, an antenna and a temperament.
  */
 export const ROBOS = [

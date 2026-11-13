@@ -17,7 +17,7 @@
         </button>
         <span class="spacer"></span>
         <button type="button" class="mode mono" :title="modeTitle" @click="cycleMode">
-          {{ mode === 'debate' ? 'DEBATE · 2×' : 'HUDDLE · 1×' }}
+          {{ mode === 'debate' ? 'DEBATE · 2×' : 'RALLY · 1×' }}
         </button>
         <button
           type="button"
@@ -66,7 +66,7 @@
         >
           <span class="glyph" :style="{ color: robo.color }">{{ robo.glyph }}</span>
           @{{ robo.name.toLowerCase() }}
-          <small>{{ robo.role }}</small>
+          <small>{{ robo.missionRole || robo.role }}</small>
         </button>
       </div>
 
@@ -89,7 +89,7 @@ export default {
     robos: { type: Array, default: () => [] },
     selected: { type: Array, default: () => [] },
     running: Boolean,
-    mode: { type: String, default: 'huddle' },
+    mode: { type: String, default: 'rally' },
     autoSpeak: Boolean,
   },
   emits: ['send', 'stop', 'toggle', 'update:mode', 'toggle-voice'],
@@ -112,7 +112,7 @@ export default {
     modeTitle() {
       return this.mode === 'debate'
         ? 'Debate: two passes so robos can answer each other'
-        : 'Huddle: one pass around the crew'
+        : 'Rally: one pass around the crew'
     },
     mentionOptions() {
       if (!this.mentionMatch) return []
@@ -172,7 +172,7 @@ export default {
       })
     },
     cycleMode() {
-      this.$emit('update:mode', this.mode === 'debate' ? 'huddle' : 'debate')
+      this.$emit('update:mode', this.mode === 'debate' ? 'rally' : 'debate')
     },
     toggleDictation() {
       if (this.listening) {
@@ -220,6 +220,33 @@ export default {
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 2px 9px;
+}
+
+@media (max-width: 899px) {
+  .composer {
+    padding: 0 12px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .targets {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-width: none;
+  }
+
+  .targets::-webkit-scrollbar {
+    display: none;
+  }
+
+  .targets .spacer {
+    flex: 1 0 8px;
+  }
+
+  .targets .target,
+  .targets .mode,
+  .targets .sound {
+    flex: 0 0 auto;
+  }
 }
 
 .targets-label {

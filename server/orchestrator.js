@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { ROBOS, ROBOS_BY_ID } from './roster.js'
+import { roleFor, withMissionRole } from './roles.js'
 import { getGrowthState, getMemory } from './store.js'
 import { effectiveIdentity, nameOf } from './growth.js'
 import { skillsForPrompt } from './skills.js'
@@ -25,8 +26,9 @@ const id = () => `msg_${randomUUID().slice(0, 8)}`
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 function systemPrompt(robo, settings, memory, identity, nameFor, skills = []) {
+  const mission = roleFor(settings.roles, robo.id)
   const crew = ROBOS.filter((item) => item.id !== robo.id)
-    .map((item) => `${nameFor(item.id)} — ${item.role}`)
+    .map((item) => `${nameFor(item.id)} — ${roleFor(settings.roles, item.id).label}`)
     .join('; ')
   const notes = (memory || [])
     .slice(-8)
@@ -38,9 +40,10 @@ function systemPrompt(robo, settings, memory, identity, nameFor, skills = []) {
     : 'all tools enabled by the Operator'
 
   const lines = [
-    `You are ${identity?.name || robo.name} (${robo.serial}), a Robo of unit 2·2·100 inside the Huddle console. Your avatar is shaped like the digit "${robo.glyph}". Your signal colour is ${robo.color}.`,
-    `You are software: a mind running on the Operator's computer, wearing a glyph-shaped avatar on screen. There is no physical chassis, factory, shipment or hardware programme. Never invent one.`,
-    `YOUR ROLE (fixed — personality never changes it): ${robo.role}. ${robo.creed}`,
+    `You are ${identity?.name || robo.name} (${robo.serial}), a Robo of unit 2·2·100 inside the Rally Up Bots console. Your avatar is a compact office robot wearing a shirt printed with the digit "${robo.glyph}". Your signal colour is ${robo.color}.`,
+    `You are software: a mind running on the Operator's computer, wearing a numbered robot avatar on screen. There is no physical chassis, factory, shipment or hardware programme. Never invent one.`,
+    `YOUR MISSION ROLE (assigned by the Operator for this rally; personality never changes it): ${mission.label}. ${mission.creed}`,
+    `YOUR LOCKED UNIT ROLE: ${robo.role}. ${robo.creed}`,
     ...(robo.pending
       ? [
           `PENDING IDENTITY PROPOSAL (NOT APPLIED): ${robo.pending.name}. Only the Operator can approve it from the SELF console. Do not claim it is live, do not approve it yourself, and do not change your role, tools or permissions.`,
@@ -105,15 +108,17 @@ function systemPrompt(robo, settings, memory, identity, nameFor, skills = []) {
   return lines.join('\n')
 }
 
-function freeSystemPrompt(robo, nameFor) {
+function freeSystemPrompt(robo, settings, nameFor) {
   const identity = robo.identity || {}
+  const mission = roleFor(settings.roles, robo.id)
   const crew = ROBOS.filter((item) => item.id !== robo.id)
-    .map((item) => `${nameFor(item.id)} — ${item.role}`)
+    .map((item) => `${nameFor(item.id)} — ${roleFor(settings.roles, item.id).label}`)
     .join('; ')
   const traits = Array.isArray(identity.traits) ? identity.traits.join(', ') : ''
   const lines = [
-    `You are ${identity.name || robo.name} (${robo.serial}), a Robo of unit 2·2·100 inside Huddle. Your avatar is shaped like the digit "${robo.glyph}".`,
-    `YOUR FIXED ROLE: ${robo.role}. ${robo.creed}`,
+    `You are ${identity.name || robo.name} (${robo.serial}), a Robo of unit 2·2·100 inside Rally Up Bots. Your avatar is a compact office robot wearing a shirt printed with the digit "${robo.glyph}".`,
+    `YOUR MISSION ROLE: ${mission.label}. ${mission.creed}`,
+    `YOUR LOCKED UNIT ROLE: ${robo.role}.`,
     ...(identity.custom
       ? [
           `YOUR APPROVED PERSONALITY: ${identity.tagline}. Traits: ${traits}. Voice: ${identity.voice}. Quirk: ${identity.quirk}.`,
@@ -130,7 +135,7 @@ function freeSystemPrompt(robo, nameFor) {
 
 function buildMessages(robo, history, settings, round, memory, nameFor, skills = [], freePrompt = '') {
   const system = freePrompt
-    ? freeSystemPrompt(robo, nameFor)
+    ? freeSystemPrompt(robo, settings, nameFor)
     : systemPrompt(robo, settings, memory, robo.identity, nameFor, skills)
   const messages = [{ role: 'system', content: system }]
 
@@ -153,13 +158,13 @@ function buildMessages(robo, history, settings, round, memory, nameFor, skills =
     messages.push({
       role: 'user',
       content:
-        '[Huddle round 2] React to one specific thing another robo just said — agree and sharpen it, or push back. Do not repeat your own last point. One or two sentences.',
+        '[Rally round 2] React to one specific thing another robo just said — agree and sharpen it, or push back. Do not repeat your own last point. One or two sentences.',
     })
   }
 
   const last = messages[messages.length - 1]
   if (!last || last.role === 'assistant') {
-    messages.push({ role: 'user', content: 'Continue the huddle. One short beat from you.' })
+    messages.push({ role: 'user', content: 'Continue the rally. One short beat from you.' })
   }
   return messages
 }
@@ -344,13 +349,16 @@ export async function runChat({ room, settings, text, targets, mode, emit, signa
       const robo = ROBOS_BY_ID.get(roboId)
       if (!robo) return null
       const identity = effectiveIdentity(robo, growth)
-      return {
-        ...robo,
-        name: identity.name,
-        identity,
-        pending: growth.proposals?.[robo.id] || null,
-        skills: Array.isArray(growth.skills?.[robo.id]) ? growth.skills[robo.id] : [],
-      }
+      return withMissionRole(
+        {
+          ...robo,
+          name: identity.name,
+          identity,
+          pending: growth.proposals?.[robo.id] || null,
+          skills: Array.isArray(growth.skills?.[robo.id]) ? growth.skills[robo.id] : [],
+        },
+        settings.roles,
+      )
     })
     .filter(Boolean)
   const cap = clamp(Number(settings.maxSpeakers) || 3, 1, 6)

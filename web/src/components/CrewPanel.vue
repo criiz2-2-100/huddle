@@ -1,9 +1,20 @@
 <template>
   <div class="crew">
-    <p class="panel-note">
-      Toggle who is on deck. Any Robo can run a different model — a fast local one for the
-      engineer, a cloud reasoner for the critic.
-    </p>
+    <div class="crew-tools">
+      <p class="panel-note">
+        Toggle who is on deck. The unit role stays locked; the mission role is yours to assign.
+      </p>
+      <button class="role-open" type="button" @click="$emit('open-roles')">
+        ROLE DECK
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
+    <div class="quick-crew" aria-label="Crew presets">
+      <span class="mono">CREW</span>
+      <button type="button" @click="$emit('preset', 'solo')">SOLO</button>
+      <button type="button" @click="$emit('preset', 'duo')">DUO</button>
+      <button type="button" @click="$emit('preset', 'full')">FULL</button>
+    </div>
 
     <article
       v-for="robo in robos"
@@ -26,7 +37,11 @@
           <strong>{{ robo.name }}</strong>
           <span class="serial mono">{{ robo.serial }}</span>
         </header>
-        <p class="role">{{ robo.role }}</p>
+        <p class="role">
+          <span class="mission-tag mono">MISSION</span>
+          {{ robo.missionRole || robo.role }}
+        </p>
+        <p class="unit-role mono">UNIT ROLE · {{ robo.role }}</p>
         <p class="origin" v-if="robo.identity?.custom">
           was {{ robo.defaultName }} · self-named v{{ robo.identity.version }}
         </p>
@@ -35,7 +50,7 @@
           <span v-if="robo.skillSeedCount"> · {{ robo.skillSeedCount }} seed</span>
           <span v-if="robo.skillAdoptedCount"> · {{ robo.skillAdoptedCount }} adopted</span>
         </p>
-        <p class="creed">{{ robo.creed }}</p>
+        <p class="creed">{{ robo.missionRoleSummary || robo.creed }}</p>
 
         <div class="controls">
           <button
@@ -92,7 +107,7 @@ export default {
     memory: { type: Object, default: () => ({}) },
     defaultModel: { type: String, default: '' },
   },
-  emits: ['toggle', 'set-model', 'solo', 'clear-memory', 'open-identity'],
+  emits: ['toggle', 'set-model', 'solo', 'clear-memory', 'open-identity', 'open-roles', 'preset'],
   methods: {
     notesFor(id) {
       return this.memory[id] || []
@@ -119,10 +134,71 @@ export default {
 }
 
 .panel-note {
-  margin: 0 0 4px;
+  margin: 0;
   color: var(--dim);
   font-size: 10.5px;
   line-height: 1.55;
+}
+
+.crew-tools {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 2px;
+}
+
+.crew-tools .panel-note {
+  flex: 1;
+}
+
+.role-open {
+  flex: 0 0 auto;
+  height: 25px;
+  padding: 0 7px;
+  border: 1px solid rgba(94, 241, 194, 0.3);
+  border-radius: 6px;
+  background: rgba(94, 241, 194, 0.05);
+  color: var(--mint);
+  font-family: var(--mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.role-open:hover {
+  background: rgba(94, 241, 194, 0.12);
+}
+
+.quick-crew {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+.quick-crew > span {
+  margin-right: 2px;
+  color: #42566b;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+}
+
+.quick-crew button {
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.quick-crew button:hover {
+  border-color: rgba(94, 241, 194, 0.35);
+  color: var(--mint);
 }
 
 .card {
@@ -175,10 +251,29 @@ header strong {
 }
 
 .role {
-  margin: 1px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 1px 0 2px;
   color: var(--muted);
   font-size: 10px;
   letter-spacing: 0.03em;
+}
+
+.mission-tag {
+  padding: 1px 3px;
+  border: 1px solid rgba(94, 241, 194, 0.24);
+  border-radius: 3px;
+  color: var(--mint);
+  font-size: 5.5px;
+  letter-spacing: 0.06em;
+}
+
+.unit-role {
+  margin: 0 0 4px;
+  color: #42566b;
+  font-size: 6.5px;
+  letter-spacing: 0.05em;
 }
 
 .origin {

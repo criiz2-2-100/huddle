@@ -85,7 +85,7 @@
               </div>
               <p>
                 When armed, a Robo may apply a bounded personal creed, working practice and
-                role-scoped craft skills after a huddle. It cannot change its unit role, unit
+                role-scoped craft skills after a rally. It cannot change its unit role, unit
                 creed, permissions or safety. Catalog discovery works during a turn even when
                 autonomy is off. Identity max once / 6 h · skills max 2 / 24 h.
               </p>
@@ -98,9 +98,71 @@
                   {{ runningAuto ? 'IMPROVING…' : 'RUN NOW' }}
                 </button>
                 <span class="hint">
-                  Local models have no app token or reflection-time cap. Each learned skill is used
-                  in future turns.
+                  A local reflection has no app-side time cap; a cloud choice keeps the 150 s cap.
+                  Each learned skill is used in future turns.
                 </span>
+              </div>
+            </div>
+
+            <div class="growth-override">
+              <div class="section-head">
+                <span class="mono">GROWTH MODELS · THIS ROBO</span>
+                <span class="mono">{{ roboOverrideActive ? 'OVERRIDE' : 'GLOBAL' }}</span>
+              </div>
+              <p class="hint">
+                {{ selected.name }} reflects with {{ selectedIdentityLabel }} and learns skills with
+                {{ selectedSkillLabel }}. Use the slots below only to override the global growth
+                models for this Robo.
+              </p>
+              <div class="override-grid">
+                <label class="field">
+                  <span>Identity reflection</span>
+                  <select
+                    v-model="roboGrowthForm.identity"
+                    :disabled="busy || savingGrowth"
+                  >
+                    <option value="">Use global · {{ globalGrowthLabel('identity') }}</option>
+                    <option value="auto">Auto · local-first</option>
+                    <option
+                      v-for="name in growthModelNames"
+                      :key="`identity-${name}`"
+                      :value="name"
+                    >
+                      {{ name }}
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Skill updates</span>
+                  <select v-model="roboGrowthForm.skills" :disabled="busy || savingGrowth">
+                    <option value="">Use global · {{ globalGrowthLabel('skills') }}</option>
+                    <option value="auto">Auto · local-first</option>
+                    <option
+                      v-for="name in growthModelNames"
+                      :key="`skills-${name}`"
+                      :value="name"
+                    >
+                      {{ name }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <div class="override-actions">
+                <button
+                  class="btn primary"
+                  :disabled="busy || savingGrowth || !roboGrowthDirty"
+                  @click="saveRoboGrowthModels"
+                >
+                  {{ savingGrowth ? 'SAVING…' : 'SAVE ROBO MODELS' }}
+                </button>
+                <button
+                  type="button"
+                  class="text-btn"
+                  :disabled="busy || savingGrowth || !roboOverrideActive"
+                  @click="clearRoboGrowthModels"
+                >
+                  USE GLOBAL
+                </button>
               </div>
             </div>
 
@@ -175,7 +237,7 @@
               <p class="hint">
                 {{
                   linked
-                    ? `Reflection engine: ${modelLabel}. Growth prefers an installed local model, so a review works offline.`
+                    ? `Identity engine: ${modelLabel} · skill engine: ${skillModelLabel}. Global choices are in SETUP → GROWTH MODELS; this Robo can override them above.`
                     : 'Start Ollama (or fix the engine in Setup) to reflect.'
                 }}
                 A reflection is a proposal, never an automatic change.
@@ -315,6 +377,8 @@ export default {
     model: { type: String, default: '' },
     provider: { type: String, default: 'ollama' },
     linked: Boolean,
+    settings: { type: Object, default: () => ({}) },
+    models: { type: Array, default: () => [] },
   },
   emits: ['close', 'updated'],
   data() {
@@ -325,6 +389,10 @@ export default {
       traitsText: '',
       localIdentity: null,
       growthModel: '',
+      growthModels: { identity: '', skills: '' },
+      roboModels: {},
+      roboGrowthForm: { identity: '', skills: '' },
+      savingGrowth: false,
       autonomy: false,
       runningAuto: false,
       toolChoices: [
@@ -387,9 +455,51 @@ export default {
     historyFor() {
       return this.growth.history?.[this.selectedId] || []
     },
+    roboOverride() {
+      const override = this.settings?.roboGrowthModels?.[this.selectedId] || {}
+      return {
+        identity: typeof override.identity === 'string' ? override.identity : '',
+        skills: typeof override.skills === 'string' ? override.skills : '',
+      }
+    },
+    roboOverrideActive() {
+      return Boolean(this.roboOverride.identity || this.roboOverride.skills)
+    },
+    roboGrowthDirty() {
+      return (
+        this.roboGrowthForm.identity !== this.roboOverride.identity ||
+        this.roboGrowthForm.skills !== this.roboOverride.skills
+      )
+    },
+    growthModelNames() {
+      const names = (this.models || []).map((model) => model.name).filter(Boolean)
+      const current = [
+        this.settings?.growthModels?.identity,
+        this.settings?.growthModels?.skills,
+        this.roboOverride.identity,
+        this.roboOverride.skills,
+        this.selectedResolved.identity,
+        this.selectedResolved.skills,
+      ]
+      for (const value of current) {
+        if (value && value !== 'auto' && !names.includes(value)) names.push(value)
+      }
+      return names
+    },
+    selectedResolved() {
+      return this.roboModels?.[this.selectedId] || this.growthModels
+    },
+    selectedIdentityLabel() {
+      return this.shortenModel(this.selectedResolved.identity || this.model) || 'the unit model'
+    },
+    selectedSkillLabel() {
+      return this.shortenModel(this.selectedResolved.skills || this.model) || 'the unit model'
+    },
     modelLabel() {
-      const name = String(this.growthModel || this.model || '').replace(/:latest$/, '')
-      return name.length > 32 ? `${name.slice(0, 30)}…` : name || 'the unit model'
+      return this.selectedIdentityLabel
+    },
+    skillModelLabel() {
+      return this.selectedSkillLabel
     },
   },
   async mounted() {
@@ -403,20 +513,94 @@ export default {
   beforeUnmount() {
     window.removeEventListener('keydown', this.onKeydown)
   },
+  watch: {
+    selectedId() {
+      this.syncGrowthSelection()
+    },
+    settings: {
+      deep: true,
+      handler() {
+        this.syncGrowthSelection()
+      },
+    },
+  },
   methods: {
-    async load() {
+    async load(preserveGrowthForm = false) {
       this.loading = true
       this.error = ''
       try {
-        this.growth = await getGrowth()
-        this.growthModel = this.growth.model || this.model
+        const loaded = await getGrowth()
+        this.growth = loaded
+        this.growthModels = loaded.models || {
+          identity: loaded.model || '',
+          skills: loaded.model || '',
+        }
+        this.roboModels = loaded.robos || {}
         this.autonomy = Boolean(this.growth.autonomy)
+        if (!preserveGrowthForm) this.syncGrowthSelection()
+        else this.growthModel = this.selectedResolved.identity || this.model
         this.syncDraft()
       } catch (error) {
         this.error = error.message
       } finally {
         this.loading = false
       }
+    },
+    shortenModel(value) {
+      const name = String(value || '').replace(/:latest$/, '')
+      if (!name) return ''
+      if (name === 'auto') return 'Auto · local-first'
+      return name.length > 32 ? `${name.slice(0, 30)}…` : name
+    },
+    globalGrowthLabel(slot) {
+      const raw = this.settings?.growthModels?.[slot] || ''
+      if (!raw || raw === 'auto') return 'Auto · local-first'
+      return this.shortenModel(raw)
+    },
+    syncGrowthSelection() {
+      this.roboGrowthForm = {
+        identity: this.roboOverride.identity,
+        skills: this.roboOverride.skills,
+      }
+      this.growthModel = this.selectedResolved.identity || this.model
+    },
+    applyGrowthState(state) {
+      this.growth = {
+        ...state,
+        model: state?.model ?? this.growthModel,
+        models: state?.models ?? this.growthModels,
+        robos: state?.robos ?? this.roboModels,
+      }
+    },
+    async saveRoboGrowthModels() {
+      if (this.busy || this.savingGrowth || !this.selected || !this.roboGrowthDirty) return
+      this.savingGrowth = true
+      this.error = ''
+      this.notice = ''
+      try {
+        await saveSettings({
+          roboGrowthModels: {
+            [this.selectedId]: {
+              identity: this.roboGrowthForm.identity.trim(),
+              skills: this.roboGrowthForm.skills.trim(),
+            },
+          },
+        })
+        await this.load(true)
+        this.notice = this.roboOverrideActive
+          ? `${this.selected.name} now uses its own growth models.`
+          : `${this.selected.name} now follows the global growth models.`
+        this.$emit('updated')
+      } catch (error) {
+        this.error = error.message
+      } finally {
+        this.savingGrowth = false
+      }
+    },
+    async clearRoboGrowthModels() {
+      if (this.busy || this.savingGrowth || !this.selected) return
+      this.roboGrowthForm = { identity: '', skills: '' }
+      await this.saveRoboGrowthModels()
     },
     syncDraft() {
       this.localIdentity = null
@@ -435,6 +619,7 @@ export default {
     select(id) {
       if (this.busy || id === this.selectedId) return
       this.selectedId = id
+      this.syncGrowthSelection()
       this.syncDraft()
     },
     async reflect() {
@@ -444,8 +629,9 @@ export default {
       this.notice = ''
       try {
         const result = await reflectRobo(this.selectedId, this.roomId)
-        this.growth = result.growth
-        this.growthModel = result.proposal.model || this.growthModel
+        this.applyGrowthState(result.growth)
+        this.growthModel =
+          result.proposal.model || this.selectedResolved.identity || this.model
         this.draft = {
           ...result.proposal,
           traits: [...(result.proposal.traits || [])],
@@ -484,11 +670,11 @@ export default {
           tools: this.draft.tools || [],
           rationale: this.draft.rationale,
         })
-        this.growth = result.growth
+        this.applyGrowthState(result.growth)
         this.localIdentity = result.identity
         this.draft = null
         this.traitsText = ''
-        this.notice = 'Applied. The role lock held; the next huddle uses the new identity.'
+        this.notice = 'Applied. The role lock held; the next rally uses the new identity.'
         this.$emit('updated')
       } catch (error) {
         this.error = error.message
@@ -502,7 +688,7 @@ export default {
       this.error = ''
       try {
         const result = await discardRobo(this.selectedId)
-        this.growth = result.growth
+        this.applyGrowthState(result.growth)
         this.draft = null
         this.traitsText = ''
         this.notice = 'Proposal discarded. Nothing changed.'
@@ -546,7 +732,7 @@ export default {
       this.notice = ''
       try {
         const result = await runAutonomyApi(this.selectedId, this.roomId)
-        this.growth = result.growth
+        this.applyGrowthState(result.growth)
         this.localIdentity = result.growth.identities?.[this.selectedId] || null
         this.draft = null
         this.traitsText = ''
@@ -570,7 +756,7 @@ export default {
       this.error = ''
       try {
         const result = await forgetSkillApi(this.selectedId, skillId)
-        this.growth = result.growth
+        this.applyGrowthState(result.growth)
         this.notice = 'Skill forgotten.'
         this.$emit('updated')
       } catch (error) {
@@ -592,7 +778,7 @@ export default {
       this.error = ''
       try {
         const result = await revertRobo(this.selectedId)
-        this.growth = result.growth
+        this.applyGrowthState(result.growth)
         const base = this.currentIdentity
         this.localIdentity = {
           ...base,
@@ -1118,6 +1304,58 @@ export default {
 .run-auto {
   margin: 0;
   flex: 0 0 auto;
+}
+
+.growth-override {
+  margin: 14px 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.override-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+
+.override-grid .field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.override-grid .field span {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 7.5px;
+  letter-spacing: 0.08em;
+}
+
+.override-grid select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.override-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .override-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .skills-box {

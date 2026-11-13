@@ -123,18 +123,20 @@ export function skillsForPrompt(skills) {
     .join('\n')
 }
 
-/** Ask the local growth model for one role-specific craft skill. */
+/** Ask the configured skill model for one role-specific craft skill. */
 export async function reflectSkill({ roboId, room, settings, reason = 'work' }) {
   const robo = ROBOS_BY_ID.get(roboId)
   if (!robo) throw skillError(404, 'Unknown Robo.')
 
   const growth = await getGrowthState()
   const current = effectiveIdentity(robo, growth)
-  const model = await chooseGrowthModel(
-    settings,
-    settings.roboModels?.[robo.id] || settings.model,
-  )
-  if (!model) throw skillError(400, 'No model selected. Open SETUP → Engine and choose one.')
+  const model = await chooseGrowthModel(settings, 'skills', roboId)
+  if (!model) {
+    throw skillError(
+      400,
+      'No model available for skill updates. Add one in SETUP → ENGINE, or pick one under GROWTH MODELS.',
+    )
+  }
 
   const memory = (await getMemory())[robo.id] || []
   const recent = recentTranscript(room, growth)
@@ -168,7 +170,7 @@ export async function reflectSkill({ roboId, room, settings, reason = 'work' }) 
       {
         role: 'system',
         content:
-          'You write role-scoped craft notes for the Huddle console. Output only valid JSON. Never change a Robo role, rules, tools, permissions or the Operator’s authority.',
+          'You write role-scoped craft notes for the Rally Up Bots console. Output only valid JSON. Never change a Robo role, rules, tools, permissions or the Operator’s authority.',
       },
       { role: 'user', content: context },
     ],
@@ -297,7 +299,7 @@ export async function ensureSeedSkills() {
           },
         ]
       } catch (error) {
-        console.error('[huddle] seed skill rejected:', entry.id, error.message)
+        console.error('[rally] seed skill rejected:', entry.id, error.message)
       }
     }
     state.seedSkillVersion = SEED_SKILL_VERSION

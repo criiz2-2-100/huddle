@@ -7,14 +7,14 @@
         <span style="--c: #ff5fa8">0</span>
       </div>
       <div class="brand-text">
-        <h1>HUDDLE</h1>
-        <p>2·2·100 ROBO CONSOLE</p>
+        <h1>RALLY UP</h1>
+        <p>BOTS · 2·2·100</p>
       </div>
     </div>
 
-    <button class="new" @click="$emit('create')"><span>+</span> NEW HUDDLE</button>
+    <button class="new" @click="$emit('create')"><span>+</span> NEW RALLY</button>
 
-    <p class="section-label mono">HUDDLES</p>
+    <p class="section-label mono">RALLIES</p>
     <nav class="rooms">
       <div
         v-for="room in rooms"
@@ -38,7 +38,7 @@
             <span class="room-name" :title="room.name" @dblclick.stop="startRename(room)">{{
               room.name
             }}</span>
-            <button class="remove" title="Delete huddle" @click.stop="$emit('remove', room.id)">
+            <button class="remove" title="Delete rally" @click.stop="$emit('remove', room.id)">
               ×
             </button>
           </template>
@@ -49,7 +49,7 @@
           <span>{{ when(room.updatedAt) }}</span>
         </div>
       </div>
-      <p v-if="!rooms.length" class="no-rooms">No huddles yet.</p>
+      <p v-if="!rooms.length" class="no-rooms">No rallies yet.</p>
     </nav>
 
     <div class="sidebar-foot">

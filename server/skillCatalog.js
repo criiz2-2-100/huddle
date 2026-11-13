@@ -54,7 +54,7 @@ export async function loadSkillCatalog() {
   const entries = (Array.isArray(raw?.entries) ? raw.entries : []).map(normalizeEntry).filter(Boolean)
   if (!entries.length) throw new Error('The skill catalog has no valid entries.')
   cachedCatalog = {
-    pack: cleanField(raw?.pack, 80) || 'Huddle Role Craft',
+    pack: cleanField(raw?.pack, 80) || 'Rally Up Bots Role Craft',
     version: Number(raw?.version) || 1,
     description: cleanField(raw?.description, 300),
     source: cleanField(raw?.source, 200) || 'repo:skill-packs/role-craft.json',

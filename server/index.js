@@ -4,8 +4,10 @@ import { promises as fs, existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { PORT, DIST_DIR, MAX_BODY_BYTES } from './config.js'
 import { ROBOS, ROBO_IDS } from './roster.js'
+import { ROLE_LIBRARY, normalizeRoleAssignments, recommendRoles, withMissionRole } from './roles.js'
 import {
   ensureDataDir,
+  migrateLegacyRoomNames,
   getSettings,
   patchSettings,
   getRooms,
@@ -25,12 +27,20 @@ import {
   revertIdentity,
   rosterWithIdentities,
   nameOf,
-  chooseGrowthModel,
+  growthModelsForAll,
 } from './growth.js'
 import { listOllamaModels, listOpenAIModels, suggestModel } from './llm.js'
 import { runChat } from './orchestrator.js'
 import { AUTONOMY_LIMITS, runAutonomy, scheduleAutonomy } from './autonomy.js'
 import { deleteSkill, ensureSeedSkills } from './skills.js'
+import { getBossStatus, runBossReport } from './boss.js'
+import {
+  getRemoteStatus,
+  isLoopbackRequest,
+  rotateRemoteToken,
+  setRemoteTarget,
+  syncRemote,
+} from './remote.js'
 
 const runs = new Map()
 
@@ -89,6 +99,9 @@ function sanitizeSettings(patch) {
   if (Array.isArray(patch.active)) {
     next.active = patch.active.filter((roboId) => ROBO_IDS.has(roboId))
   }
+  if (patch.roles && typeof patch.roles === 'object' && !Array.isArray(patch.roles)) {
+    next.roles = normalizeRoleAssignments(patch.roles)
+  }
   if (patch.roboModels && typeof patch.roboModels === 'object' && !Array.isArray(patch.roboModels)) {
     const models = {}
     for (const [roboId, model] of Object.entries(patch.roboModels)) {
@@ -97,13 +110,45 @@ function sanitizeSettings(patch) {
     }
     next.roboModels = models
   }
+  if (patch.growthModels && typeof patch.growthModels === 'object' && !Array.isArray(patch.growthModels)) {
+    const models = {}
+    for (const slot of ['identity', 'skills']) {
+      const value = patch.growthModels[slot]
+      if (typeof value === 'string') models[slot] = value.trim().slice(0, 200)
+      else if (value === null) models[slot] = ''
+    }
+    if (Object.keys(models).length) next.growthModels = models
+  }
+  if (
+    patch.roboGrowthModels &&
+    typeof patch.roboGrowthModels === 'object' &&
+    !Array.isArray(patch.roboGrowthModels)
+  ) {
+    const overrides = {}
+    for (const [roboId, entry] of Object.entries(patch.roboGrowthModels)) {
+      if (!ROBO_IDS.has(roboId)) continue
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        overrides[roboId] = { identity: '', skills: '' }
+        continue
+      }
+      const override = {}
+      for (const slot of ['identity', 'skills']) {
+        if (!Object.prototype.hasOwnProperty.call(entry, slot)) continue
+        const value = entry[slot]
+        if (typeof value === 'string') override[slot] = value.trim().slice(0, 200)
+        else if (value === null) override[slot] = ''
+      }
+      if (Object.keys(override).length) overrides[roboId] = override
+    }
+    if (Object.keys(overrides).length) next.roboGrowthModels = overrides
+  }
   if (patch.maxSpeakers !== undefined && Number.isFinite(Number(patch.maxSpeakers))) {
     next.maxSpeakers = Math.min(6, Math.max(1, Math.round(Number(patch.maxSpeakers))))
   }
   if (patch.temperature !== undefined && Number.isFinite(Number(patch.temperature))) {
     next.temperature = Math.min(1.5, Math.max(0, Number(patch.temperature)))
   }
-  for (const key of ['toolsEnabled', 'allowWrite', 'allowShell', 'autoSpeak', 'autonomy']) {
+  for (const key of ['toolsEnabled', 'allowWrite', 'allowShell', 'autoSpeak', 'autonomy', 'bossAuto', 'remoteAccess']) {
     if (typeof patch[key] === 'boolean') next[key] = patch[key]
   }
   if (typeof patch.workspace === 'string' && patch.workspace.trim()) {
@@ -146,7 +191,7 @@ async function serveStatic(req, res, pathname) {
     return sendText(
       res,
       503,
-      'The Huddle UI is not built yet.\n\nDev:   npm run dev\nBuild: npm run build && npm start\n',
+      'The Rally Up Bots UI is not built yet.\n\nDev:   npm run dev\nBuild: npm run build && npm start\n',
     )
   }
 
@@ -209,6 +254,7 @@ const server = http.createServer(async (req, res) => {
         model: settings.model,
         hasKey: Boolean(settings.openaiKey),
         workspace: settings.workspace,
+        local: isLoopbackRequest(req),
       })
     }
 
@@ -235,8 +281,34 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/roster' && req.method === 'GET') {
-      const growth = await getGrowthState()
-      return sendJson(res, 200, { robos: rosterWithIdentities(growth) })
+      const [growth, settings] = await Promise.all([getGrowthState(), getSettings()])
+      return sendJson(res, 200, {
+        robos: rosterWithIdentities(growth).map((robo) => withMissionRole(robo, settings.roles)),
+      })
+    }
+
+    if (pathname === '/api/roles' && req.method === 'GET') {
+      const settings = await getSettings()
+      return sendJson(res, 200, {
+        roles: ROLE_LIBRARY,
+        assignments: settings.roles,
+        defaults: normalizeRoleAssignments({}),
+      })
+    }
+
+    if (pathname === '/api/roles/recommend' && req.method === 'POST') {
+      const body = await readBody(req)
+      const settings = await getSettings()
+      const roboIds = Array.isArray(body.roboIds) && body.roboIds.length ? body.roboIds : settings.active
+      return sendJson(
+        res,
+        200,
+        recommendRoles({
+          text: String(body.text || '').slice(0, 5000),
+          roboIds,
+          assignments: settings.roles,
+        }),
+      )
     }
 
     /* ---------------------------------------------------------------- */
@@ -246,12 +318,24 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/growth' && req.method === 'GET') {
       const settings = await getSettings()
       const growth = await getGrowthState()
+      const { global: models, robos } = await growthModelsForAll(settings)
       return sendJson(res, 200, {
         ...growth,
-        model: await chooseGrowthModel(settings),
+        model: models.identity,
+        models,
+        robos,
         autonomy: Boolean(settings.autonomy),
         limits: AUTONOMY_LIMITS,
       })
+    }
+
+    if (pathname === '/api/boss' && req.method === 'GET') {
+      return sendJson(res, 200, await getBossStatus())
+    }
+
+    if (pathname === '/api/boss/run' && req.method === 'POST') {
+      const body = await readBody(req)
+      return sendJson(res, 200, await runBossReport({ force: body.force === true }))
     }
 
     if (pathname === '/api/autonomy/run' && req.method === 'POST') {
@@ -307,8 +391,26 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/settings' && req.method === 'PUT') {
       const body = await readBody(req)
+      if (body.remoteAccess !== undefined && !isLoopbackRequest(req)) {
+        return sendJson(res, 403, { error: 'The phone link can only be changed on the host machine.' })
+      }
       const settings = await patchSettings(sanitizeSettings(body))
+      if (body.remoteAccess !== undefined) await syncRemote(settings)
       return sendJson(res, 200, publicSettings(settings))
+    }
+
+    if (pathname === '/api/remote' && req.method === 'GET') {
+      if (!isLoopbackRequest(req)) {
+        return sendJson(res, 403, { error: 'Phone-link settings are available only on the host machine.' })
+      }
+      return sendJson(res, 200, getRemoteStatus({ includeToken: true }))
+    }
+
+    if (pathname === '/api/remote/rotate' && req.method === 'POST') {
+      if (!isLoopbackRequest(req)) {
+        return sendJson(res, 403, { error: 'Phone-link settings are available only on the host machine.' })
+      }
+      return sendJson(res, 200, await rotateRemoteToken())
     }
 
     /* ---------------------------------------------------------------- */
@@ -374,11 +476,11 @@ const server = http.createServer(async (req, res) => {
       const room = await getRoom(exportMatch[1])
       if (!room) return sendJson(res, 404, { error: 'Room not found' })
       const body = JSON.stringify(
-        { app: 'Huddle', unit: '2·2·100', exportedAt: new Date().toISOString(), room },
+        { app: 'Rally Up Bots', unit: '2·2·100', exportedAt: new Date().toISOString(), room },
         null,
         2,
       )
-      const filename = `${String(room.name || 'huddle').replace(/[^\w-]+/g, '-').toLowerCase()}.json`
+      const filename = `${String(room.name || 'rally').replace(/[^\w-]+/g, '-').toLowerCase()}.json`
       res.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
         'content-disposition': `attachment; filename="${filename}"`,
@@ -388,7 +490,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     /* ---------------------------------------------------------------- */
-    /* The huddle                                                        */
+    /* The rally                                                         */
     /* ---------------------------------------------------------------- */
 
     if (pathname === '/api/chat' && req.method === 'POST') {
@@ -402,7 +504,7 @@ const server = http.createServer(async (req, res) => {
             ? 'solo'
             : body.mode === 'free'
               ? 'free'
-              : 'huddle'
+              : 'rally'
       const text = String(body.text || '').trim()
       if (!text && mode !== 'free') return sendJson(res, 400, { error: 'Say something first.' })
 
@@ -446,7 +548,7 @@ const server = http.createServer(async (req, res) => {
           save: () => saveRoom(room),
         })
         // Catalog discovery is the turn's skill-growth event. Do not queue a
-        // second autonomy pass that could alter identity in the same huddle.
+        // second autonomy pass that could alter identity in the same rally.
         if (
           settings.autonomy &&
           mode !== 'free' &&
@@ -502,13 +604,23 @@ server.requestTimeout = 0
 server.headersTimeout = 60_000
 
 await ensureDataDir()
-await ensureSeedSkills().catch((error) => {
-  console.error('[huddle] skill seed failed:', error.message)
+setRemoteTarget(PORT)
+await migrateLegacyRoomNames().catch((error) => {
+  console.error('[rally] room name migration failed:', error.message)
 })
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[huddle] brain listening on http://127.0.0.1:${PORT}`)
+await ensureSeedSkills().catch((error) => {
+  console.error('[rally] skill seed failed:', error.message)
+})
+server.listen(PORT, '127.0.0.1', async () => {
+  console.log(`[rally] brain listening on http://127.0.0.1:${PORT}`)
+  const settings = await getSettings().catch(() => null)
+  if (settings?.remoteAccess) {
+    const remote = await syncRemote(settings)
+    if (remote.error) console.error(`[rally] ${remote.error}`)
+    else console.log(`[rally] phone link listening on http://${remote.host}:${remote.port}`)
+  }
 })
 
 process.on('unhandledRejection', (error) => {
-  console.error('[huddle] unhandled rejection:', error)
+  console.error('[rally] unhandled rejection:', error)
 })

@@ -2,9 +2,15 @@
   <section ref="scroller" class="transcript" @scroll="onScroll">
     <div v-if="!messages.length" class="empty">
       <div class="empty-mark" aria-hidden="true">
-        <span style="--c: #3ee6ff">2</span>
-        <span style="--c: #ffc24a">1</span>
-        <span style="--c: #ff5fa8">0</span>
+        <RoboAvatar
+          v-for="(robo, index) in robos.slice(0, 3)"
+          :key="robo.id"
+          :glyph="robo.glyph"
+          :color="robo.color"
+          state="idle"
+          :size="58"
+          :seed="index + 1"
+        />
       </div>
       <p class="kicker">UNIT 2·2·100 · SIX ROBOS ONLINE</p>
       <h2>The room is warm.</h2>
@@ -51,7 +57,9 @@
               <span class="name" :style="{ color: roboFor(message.roboId)?.color || '#5ef1c2' }">
                 {{ roboFor(message.roboId)?.name || 'ROBO' }}
               </span>
-              <span class="role">{{ roboFor(message.roboId)?.role || 'unit 2·2·100' }}</span>
+              <span class="role">
+                {{ roboFor(message.roboId)?.missionRole || roboFor(message.roboId)?.role || 'unit 2·2·100' }}
+              </span>
               <span v-if="message.model" class="model mono">{{ shortModel(message.model) }}</span>
               <span class="time mono">{{ time(message.ts) }}</span>
             </header>
@@ -96,7 +104,7 @@ import RoboAvatar from './RoboAvatar.vue'
 import { prettyArgs, renderMarkdown } from '../format'
 
 const PROMPTS = [
-  'Plan the smallest working version of Huddle.',
+  'Plan the smallest working version of Rally Up Bots.',
   'Debate: local models vs cloud models for this build.',
   'Read the project files and tell me what to fix first.',
 ]
@@ -184,26 +192,17 @@ export default {
 
 .empty-mark {
   display: flex;
-  gap: 8px;
-  margin-bottom: 26px;
+  align-items: flex-end;
+  gap: 7px;
+  height: 84px;
+  margin-bottom: 17px;
 }
 
-.empty-mark span {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--c) 8%, transparent);
-  color: var(--c);
-  font-family: var(--mono);
-  font-size: 24px;
-  font-weight: 700;
-  box-shadow: 0 0 22px color-mix(in srgb, var(--c) 18%, transparent);
+.empty-mark :deep(.robo) {
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.32));
 }
 
-.empty-mark span:nth-child(2) {
+.empty-mark :deep(.robo:nth-child(2)) {
   transform: translateY(-7px);
 }
 

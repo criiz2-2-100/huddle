@@ -2,11 +2,13 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DATA_DIR, DEFAULT_SETTINGS } from './config.js'
+import { normalizeRoleAssignments } from './roles.js'
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
 const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json')
 const MEMORY_FILE = path.join(DATA_DIR, 'memory.json')
 const GROWTH_FILE = path.join(DATA_DIR, 'growth.json')
+const BOSS_FILE = path.join(DATA_DIR, 'boss.json')
 
 /** One write at a time per file so two runs can't clobber each other. */
 const locks = new Map()
@@ -38,12 +40,68 @@ export async function ensureDataDir() {
   await fs.mkdir(DATA_DIR, { recursive: true })
 }
 
+/** Rename rooms left with a default Huddle title by an older install. */
+export function migrateLegacyRoomNames() {
+  return withLock(ROOMS_FILE, async () => {
+    const rooms = await readJson(ROOMS_FILE, [])
+    if (!Array.isArray(rooms)) return
+    let changed = false
+    for (const room of rooms) {
+      if (!room || typeof room.name !== 'string') continue
+      const match = room.name.match(/^Huddle(?: (\d+))?$/)
+      if (!match) continue
+      room.name = match[1] ? `Rally ${match[1]}` : 'Rally'
+      room.updatedAt = Date.now()
+      changed = true
+    }
+    if (changed) await writeJson(ROOMS_FILE, rooms, true)
+  })
+}
+
+function cleanRoboGrowthSlot(value) {
+  return typeof value === 'string' ? value.trim().slice(0, 200) : ''
+}
+
+function mergeRoboGrowthModels(saved, patch) {
+  const next = {}
+  const source = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
+  for (const [roboId, entry] of Object.entries(source)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
+    const identity = cleanRoboGrowthSlot(entry.identity)
+    const skills = cleanRoboGrowthSlot(entry.skills)
+    if (identity || skills) next[roboId] = { identity, skills }
+  }
+  if (patch && typeof patch === 'object' && !Array.isArray(patch)) {
+    for (const [roboId, entry] of Object.entries(patch)) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        delete next[roboId]
+        continue
+      }
+      const previous = next[roboId] || { identity: '', skills: '' }
+      const identity =
+        Object.prototype.hasOwnProperty.call(entry, 'identity')
+          ? cleanRoboGrowthSlot(entry.identity)
+          : previous.identity
+      const skills =
+        Object.prototype.hasOwnProperty.call(entry, 'skills')
+          ? cleanRoboGrowthSlot(entry.skills)
+          : previous.skills
+      if (identity || skills) next[roboId] = { identity, skills }
+      else delete next[roboId]
+    }
+  }
+  return next
+}
+
 export async function getSettings() {
   const saved = await readJson(SETTINGS_FILE, {})
   return {
     ...DEFAULT_SETTINGS,
     ...saved,
     roboModels: { ...DEFAULT_SETTINGS.roboModels, ...(saved.roboModels || {}) },
+    growthModels: { ...DEFAULT_SETTINGS.growthModels, ...(saved.growthModels || {}) },
+    roboGrowthModels: mergeRoboGrowthModels(saved.roboGrowthModels, null),
+    roles: normalizeRoleAssignments({ ...DEFAULT_SETTINGS.roles, ...(saved.roles || {}) }),
   }
 }
 
@@ -59,6 +117,17 @@ export function patchSettings(patch) {
         ...(saved.roboModels || {}),
         ...(patch.roboModels || {}),
       },
+      growthModels: {
+        ...DEFAULT_SETTINGS.growthModels,
+        ...(saved.growthModels || {}),
+        ...(patch.growthModels || {}),
+      },
+      roboGrowthModels: mergeRoboGrowthModels(saved.roboGrowthModels, patch.roboGrowthModels),
+      roles: normalizeRoleAssignments({
+        ...DEFAULT_SETTINGS.roles,
+        ...(saved.roles || {}),
+        ...(patch.roles || {}),
+      }),
     }
     await writeJson(SETTINGS_FILE, next, true)
     return next
@@ -94,7 +163,7 @@ export function createRoom(name) {
     const next = Array.isArray(rooms) ? rooms : []
     const room = {
       id: `room_${randomUUID().slice(0, 8)}`,
-      name: (name || '').trim().slice(0, 60) || `Huddle ${next.length + 1}`,
+      name: (name || '').trim().slice(0, 60) || `Rally ${next.length + 1}`,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messages: [],
@@ -207,6 +276,31 @@ export function updateGrowth(mutator) {
     const state = normalizeGrowth(await readJson(GROWTH_FILE, {}))
     await mutator(state)
     await writeJson(GROWTH_FILE, state, true)
+    return state
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/* Boss review                                                         */
+/* ------------------------------------------------------------------ */
+
+function normalizeBoss(saved = {}) {
+  return {
+    reports: Array.isArray(saved.reports) ? saved.reports.filter(Boolean).slice(0, 14) : [],
+    lastRunAt: Number(saved.lastRunAt) || 0,
+  }
+}
+
+export async function getBossState() {
+  return normalizeBoss(await readJson(BOSS_FILE, {}))
+}
+
+export function saveBossReport(report) {
+  return withLock(BOSS_FILE, async () => {
+    const state = normalizeBoss(await readJson(BOSS_FILE, {}))
+    state.reports = [report, ...state.reports.filter((item) => item?.id !== report.id)].slice(0, 14)
+    state.lastRunAt = Number(report.generatedAt) || Date.now()
+    await writeJson(BOSS_FILE, state, true)
     return state
   })
 }

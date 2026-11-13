@@ -1,6 +1,8 @@
 node_modules/
 web/dist/
 data/
+release/
+.desktop-build/
 .DS_Store
 *.log
 .env

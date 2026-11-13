@@ -27,8 +27,8 @@
         <p class="note">
           Local models run on your machine, free. <code>:cloud</code> tags route through your
           signed-in Ollama account — run <code>ollama signin</code> first. If a cloud turn fails,
-          Huddle falls back to an installed local model; growth always prefers local so it works
-          offline.
+          Rally Up falls back to an installed local model. Growth defaults to local so it works
+          offline; override either slot under GROWTH MODELS.
         </p>
       </template>
 
@@ -91,7 +91,30 @@
     </section>
 
     <section>
-      <h3 class="mono">HUDDLE</h3>
+      <h3 class="mono">GROWTH MODELS</h3>
+      <label class="field">
+        <span>Identity reflection</span>
+        <select v-model="form.growthModels.identity">
+          <option value="">Auto · local-first</option>
+          <option v-for="name in growthModelNames" :key="name" :value="name">{{ name }}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Skill updates</span>
+        <select v-model="form.growthModels.skills">
+          <option value="">Auto · local-first</option>
+          <option v-for="name in growthModelNames" :key="name" :value="name">{{ name }}</option>
+        </select>
+      </label>
+      <p class="note">
+        Used for every Robo unless that Robo has its own override in SELF. Auto uses an installed
+        local model when one exists, so growth works offline. A chosen model is used exactly, and
+        cloud choices keep the 150 s reflection cap.
+      </p>
+    </section>
+
+    <section>
+      <h3 class="mono">RALLY</h3>
       <label class="field">
         <span>Max speakers per pass · {{ form.maxSpeakers }}</span>
         <input v-model.number="form.maxSpeakers" type="range" min="1" max="6" />
@@ -122,7 +145,7 @@
       </label>
       <p class="note">
         When armed, a Robo may apply a bounded personal creed, working practice and learned craft
-        skills after a huddle. Role, unit creed, permissions and safety stay locked. Local models
+        skills after a rally. Role, unit creed, permissions and safety stay locked. Local models
         have no app-side token or reflection-time cap.
       </p>
     </section>
@@ -137,6 +160,39 @@
         Secrets (<code>.env</code>), <code>data/</code>, <code>.git</code>,
         <code>.freebuff</code> and <code>node_modules</code> stay off-limits.
       </p>
+    </section>
+
+    <section v-if="hostLocal !== false">
+      <h3 class="mono">PHONE LINK</h3>
+      <label class="check">
+        <input
+          type="checkbox"
+          :checked="remote.enabled"
+          :disabled="remoteBusy"
+          @change="$emit('remote-toggle', $event.target.checked)"
+        />
+        <span>Let a phone on this Wi-Fi open the console</span>
+      </label>
+      <p class="note">
+        Same Wi-Fi only. The link carries an access key, so rotate it if it leaks; the desktop
+        stays the only place where the key is shown.
+      </p>
+      <p v-if="remote.error" class="remote-error">{{ remote.error }}</p>
+      <template v-if="remote.enabled">
+        <div class="remote-link">
+          <input :value="remote.url" readonly aria-label="Phone link" />
+          <button type="button" class="text-btn" :disabled="remoteBusy" @click="$emit('copy-remote')">
+            COPY
+          </button>
+        </div>
+        <div class="row">
+          <span class="note">Open it on the phone, then add it to the home screen.</span>
+          <button type="button" class="text-btn" :disabled="remoteBusy" @click="$emit('remote-rotate')">
+            ROTATE KEY
+          </button>
+        </div>
+      </template>
+      <p v-else-if="!remoteBusy" class="note">Off. The console only listens on this computer.</p>
     </section>
 
     <div class="save-row">
@@ -194,8 +250,11 @@ export default {
     models: { type: Array, default: () => [] },
     modelMeta: { type: Object, default: () => ({}) },
     busy: Boolean,
+    remote: { type: Object, default: () => ({}) },
+    hostLocal: { type: Boolean, default: true },
+    remoteBusy: Boolean,
   },
-  emits: ['save', 'refresh'],
+  emits: ['save', 'refresh', 'remote-toggle', 'remote-rotate', 'copy-remote'],
   data() {
     return {
       form: {
@@ -203,6 +262,7 @@ export default {
         ollamaUrl: '',
         openaiBaseUrl: '',
         model: '',
+        growthModels: { identity: '', skills: '' },
         maxSpeakers: 3,
         temperature: 0.85,
         toolsEnabled: true,
@@ -218,7 +278,20 @@ export default {
   computed: {
     dirty() {
       if (FORM_KEYS.some((key) => this.form[key] !== this.settings[key])) return true
+      if (
+        this.form.growthModels.identity !== (this.settings.growthModels?.identity || '') ||
+        this.form.growthModels.skills !== (this.settings.growthModels?.skills || '')
+      ) {
+        return true
+      }
       return Boolean(this.keyDraft.trim()) || this.clearKey
+    },
+    growthModelNames() {
+      const names = this.models.map((model) => model.name)
+      for (const value of Object.values(this.form.growthModels)) {
+        if (value && !names.includes(value)) names.push(value)
+      }
+      return names
     },
   },
   watch: {
@@ -233,12 +306,20 @@ export default {
   methods: {
     reset() {
       for (const key of FORM_KEYS) this.form[key] = this.settings[key]
+      this.form.growthModels = {
+        identity: this.settings.growthModels?.identity || '',
+        skills: this.settings.growthModels?.skills || '',
+      }
       this.keyDraft = ''
       this.clearKey = false
     },
     submit() {
       const patch = {}
       for (const key of FORM_KEYS) patch[key] = this.form[key]
+      patch.growthModels = {
+        identity: this.form.growthModels.identity.trim(),
+        skills: this.form.growthModels.skills.trim(),
+      }
       if (this.keyDraft.trim()) patch.openaiKey = this.keyDraft.trim()
       if (this.clearKey) patch.clearKey = true
       this.keyDraft = ''
@@ -316,6 +397,36 @@ h3 {
   color: var(--muted);
   font-family: var(--mono);
   font-size: 0.92em;
+}
+
+.remote-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.remote-link input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--mint);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.remote-link .text-btn {
+  align-self: center;
+}
+
+.remote-error {
+  margin: 0;
+  color: #ff9b9b;
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .key-row {

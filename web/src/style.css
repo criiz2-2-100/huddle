@@ -35,6 +35,14 @@ html {
   background: var(--bg);
 }
 
+@media (max-width: 899px) {
+  html,
+  body,
+  #app {
+    height: 100dvh;
+  }
+}
+
 body {
   color: var(--text);
   font-family: var(--sans);

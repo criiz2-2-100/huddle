@@ -1,0 +1,19 @@
+{
+  "name": "Rally Up Bots",
+  "short_name": "Rally Up",
+  "description": "The local-first Robo crew console for unit 2·2·100.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#04070c",
+  "theme_color": "#05070c",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

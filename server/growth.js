@@ -153,15 +153,47 @@ export function rosterWithIdentities(growth) {
 }
 
 const GROWTH_UNSUITABLE = /uncensored|heretic|wormgpt|diddy|nsfw/i
+const GROWTH_MODEL_SLOTS = ['identity', 'skills']
+const GROWTH_AUTO_SENTINEL = 'auto'
+
+/** Empty (or an unknown slot) means Auto: use the local-first pick below. */
+export function configuredGrowthModel(settings, slot) {
+  if (!GROWTH_MODEL_SLOTS.includes(slot)) return ''
+  const value = settings?.growthModels?.[slot]
+  return typeof value === 'string' ? value.trim() : ''
+}
 
 /**
- * Growth is local-first. A reflection must work offline, so use an installed
- * local model when one exists; use the configured cloud model only when the
- * shelf has no local completion model at all.
+ * Raw per-Robo override. Empty means "inherit the global slot"; the explicit
+ * `auto` sentinel means "use Auto for this Robo even when global is set".
  */
-export async function chooseGrowthModel(settings, roboModel = '') {
-  const selected = roboModel || settings.model || ''
-  if (settings.provider === 'openai') return settings.model || selected
+export function configuredRoboGrowthModel(settings, roboId, slot) {
+  if (!GROWTH_MODEL_SLOTS.includes(slot)) return ''
+  const value = settings?.roboGrowthModels?.[roboId]?.[slot]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function effectiveGrowthConfigured(settings, slot, roboId = '') {
+  if (roboId) {
+    const override = configuredRoboGrowthModel(settings, roboId, slot)
+    if (override) return override
+  }
+  return configuredGrowthModel(settings, slot)
+}
+
+function resolveGrowthValue(configured, automatic) {
+  if (configured && configured !== GROWTH_AUTO_SENTINEL) return configured
+  return automatic
+}
+
+/**
+ * Auto growth is local-first. A reflection should work offline, so use an
+ * installed local model when one exists; use the configured cloud model only
+ * when the shelf has no local completion model at all.
+ */
+async function autoGrowthModel(settings) {
+  const selected = settings.model || ''
+  if (settings.provider === 'openai') return selected
   const catalog = await listOllamaModels(settings.ollamaUrl)
   const local = (catalog.models || []).filter((model) => !model.cloud)
   if (!local.length) return selected
@@ -171,6 +203,72 @@ export async function chooseGrowthModel(settings, roboModel = '') {
     if (found) return found.name
   }
   return (clean[0] || local[0]).name
+}
+
+/**
+ * The Operator's explicit choice wins: per-Robo override first, then global.
+ * Empty keeps Auto; per-Robo `auto` keeps Auto even when global names a model.
+ */
+export async function chooseGrowthModel(settings, slot = '', roboId = '') {
+  const configured = effectiveGrowthConfigured(settings, slot, roboId)
+  if (configured && configured !== GROWTH_AUTO_SENTINEL) return configured
+  return autoGrowthModel(settings)
+}
+
+/** Resolve both global slots with a single catalog read when either is on Auto. */
+export async function growthModelsFor(settings, roboId = '') {
+  const identityConfigured = effectiveGrowthConfigured(settings, 'identity', roboId)
+  const skillsConfigured = effectiveGrowthConfigured(settings, 'skills', roboId)
+  if (
+    identityConfigured &&
+    identityConfigured !== GROWTH_AUTO_SENTINEL &&
+    skillsConfigured &&
+    skillsConfigured !== GROWTH_AUTO_SENTINEL
+  ) {
+    return { identity: identityConfigured, skills: skillsConfigured }
+  }
+  const automatic = await autoGrowthModel(settings)
+  return {
+    identity: resolveGrowthValue(identityConfigured, automatic),
+    skills: resolveGrowthValue(skillsConfigured, automatic),
+  }
+}
+
+/** Resolve global growth plus every Robo override with one Auto catalog read. */
+export async function growthModelsForAll(settings) {
+  const globalConfigured = {
+    identity: configuredGrowthModel(settings, 'identity'),
+    skills: configuredGrowthModel(settings, 'skills'),
+  }
+  const overrides =
+    settings?.roboGrowthModels && typeof settings.roboGrowthModels === 'object'
+      ? settings.roboGrowthModels
+      : {}
+  const candidates = [globalConfigured.identity, globalConfigured.skills]
+  for (const override of Object.values(overrides)) {
+    if (!override || typeof override !== 'object') continue
+    candidates.push(override.identity, override.skills)
+  }
+  const needsAutomatic = candidates.some((value) => !value || value === GROWTH_AUTO_SENTINEL)
+  const automatic = needsAutomatic ? await autoGrowthModel(settings) : ''
+  const global = {
+    identity: resolveGrowthValue(globalConfigured.identity, automatic),
+    skills: resolveGrowthValue(globalConfigured.skills, automatic),
+  }
+  const robos = {}
+  for (const robo of ROBOS) {
+    const override = overrides[robo.id]
+    const identity =
+      override && typeof override.identity === 'string' && override.identity.trim()
+        ? resolveGrowthValue(override.identity.trim(), automatic)
+        : global.identity
+    const skills =
+      override && typeof override.skills === 'string' && override.skills.trim()
+        ? resolveGrowthValue(override.skills.trim(), automatic)
+        : global.skills
+    robos[robo.id] = { identity, skills }
+  }
+  return { global, robos }
 }
 
 const pick = (source, keys) =>
@@ -262,11 +360,13 @@ export async function reflectIdentity({ roboId, room, settings }) {
 
   const growth = await getGrowthState()
   const current = effectiveIdentity(robo, growth)
-  const model = await chooseGrowthModel(
-    settings,
-    settings.roboModels?.[robo.id] || settings.model,
-  )
-  if (!model) throw growthError(400, 'No model selected. Open SETUP → Engine and choose one.')
+  const model = await chooseGrowthModel(settings, 'identity', roboId)
+  if (!model) {
+    throw growthError(
+      400,
+      'No model available for identity reflection. Add one in SETUP → ENGINE, or pick one under GROWTH MODELS.',
+    )
+  }
 
   const memory = (await getMemory())[robo.id] || []
   const recent = recentTranscript(room, growth)
@@ -290,7 +390,7 @@ export async function reflectIdentity({ roboId, room, settings }) {
           .map((item) => `- ${cleanField(item.note, 300)}`)
           .join('\n')}`
       : '',
-    recent ? `RECENT HUDDLE (context only):\n${recent}` : '',
+    recent ? `RECENT RALLY (context only):\n${recent}` : '',
     `The Operator has opened a controlled self-review. Propose a small, earned evolution of your name, personality, personal creed, working practice and toolkit that stays fully inside your role. You may keep your name. Your unit role and unit creed are fixed and cannot be changed. Your personal creed is how you practise that role, not a replacement for it. You cannot change duties, permissions, safety rules, the Operator's authority, or this console. Do not propose code changes.`,
     `AVAILABLE TOOLS (you may choose a subset, never add a tool outside this list): ${availableTools.join(', ') || '(none)'}. Choosing a tool never grants a permission; the Operator's Setup gates still apply.`,
     `Write like a machine with a point of view, not a roleplay blog. Do not mention being an AI or a model.`,
@@ -309,7 +409,7 @@ export async function reflectIdentity({ roboId, room, settings }) {
       {
         role: 'system',
         content:
-          'You generate controlled identity proposals for the Huddle console. Output only valid JSON. Never change a Robo role, rules, tools or permissions.',
+          'You generate controlled identity proposals for the Rally Up Bots console. Output only valid JSON. Never change a Robo role, rules, tools or permissions.',
       },
       { role: 'user', content: context },
     ],

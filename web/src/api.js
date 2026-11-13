@@ -9,7 +9,7 @@ async function request(path, options = {}) {
       headers: { 'content-type': 'application/json', ...(options.headers || {}) },
     })
   } catch {
-    throw new Error('The Huddle brain is unreachable. Is the server running?')
+    throw new Error('The Rally Up brain is unreachable. Is the server running?')
   }
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(data.error || `${path} failed (${response.status})`)
@@ -43,6 +43,20 @@ export function removeRoom(id) {
 
 export const getMemory = () => request('/memory')
 export const getGrowth = () => request('/growth')
+export const getRoles = () => request('/roles')
+
+export function recommendRoles(payload) {
+  return request('/roles/recommend', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export const getBoss = () => request('/boss')
+
+export function runBossReview(force = false) {
+  return request('/boss/run', { method: 'POST', body: JSON.stringify({ force }) })
+}
+
+export const getRemote = () => request('/remote')
+export const rotateRemoteLink = () => request('/remote/rotate', { method: 'POST' })
 
 export function reflectRobo(id, roomId) {
   return request(`/growth/${id}/reflect`, {
@@ -89,8 +103,8 @@ export function abortRun(runId) {
   return request('/abort', { method: 'POST', body: JSON.stringify({ runId }) }).catch(() => {})
 }
 
-/** POST a huddle and dispatch each NDJSON event as it arrives. */
-export async function streamHuddle(payload, { signal, onEvent }) {
+/** POST a rally and dispatch each NDJSON event as it arrives. */
+export async function streamRally(payload, { signal, onEvent }) {
   let response
   try {
     response = await fetch(`${BASE}/chat`, {
@@ -101,12 +115,12 @@ export async function streamHuddle(payload, { signal, onEvent }) {
     })
   } catch (error) {
     if (error.name === 'AbortError') throw error
-    throw new Error('The Huddle brain is unreachable. Is the server running?')
+    throw new Error('The Rally Up brain is unreachable. Is the server running?')
   }
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}))
-    throw new Error(data.error || `Huddle failed (${response.status})`)
+    throw new Error(data.error || `Rally failed (${response.status})`)
   }
   if (!response.body) throw new Error('This browser cannot stream responses.')
 

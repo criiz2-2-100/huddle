@@ -10,6 +10,7 @@
       >
         {{ tab.label }}
         <span v-if="tab.id === 'crew'" class="count">{{ activeIds.length }}</span>
+        <span v-if="tab.id === 'boss' && boss?.due" class="due-dot" aria-label="Boss review due"></span>
       </button>
       <button class="close only-narrow" title="Close panel" @click="$emit('close')">×</button>
     </div>
@@ -46,6 +47,15 @@
         @solo="$emit('solo', $event)"
         @clear-memory="$emit('clear-memory', $event)"
         @open-identity="$emit('open-identity', $event)"
+        @open-roles="$emit('open-roles')"
+        @preset="$emit('preset', $event)"
+      />
+      <BossPanel
+        v-else-if="current === 'boss'"
+        :boss="boss"
+        :running="bossRunning"
+        @run="$emit('run-boss', $event)"
+        @toggle-auto="$emit('toggle-boss-auto', $event)"
       />
       <SetupPanel
         v-else
@@ -53,8 +63,14 @@
         :models="models"
         :model-meta="modelMeta"
         :busy="saving"
+        :remote="remote"
+        :host-local="hostLocal"
+        :remote-busy="remoteBusy"
         @save="$emit('save', $event)"
         @refresh="$emit('refresh')"
+        @remote-toggle="$emit('remote-toggle', $event)"
+        @remote-rotate="$emit('remote-rotate')"
+        @copy-remote="$emit('copy-remote')"
       />
     </div>
   </aside>
@@ -63,11 +79,12 @@
 <script>
 import Stage from './Stage.vue'
 import CrewPanel from './CrewPanel.vue'
+import BossPanel from './BossPanel.vue'
 import SetupPanel from './SetupPanel.vue'
 
 export default {
   name: 'Inspector',
-  components: { Stage, CrewPanel, SetupPanel },
+  components: { Stage, CrewPanel, BossPanel, SetupPanel },
   props: {
     current: { type: String, default: 'stage' },
     robos: { type: Array, default: () => [] },
@@ -88,6 +105,11 @@ export default {
     modelMeta: { type: Object, default: () => ({}) },
     saving: Boolean,
     open: Boolean,
+    boss: { type: Object, default: () => ({ report: null, due: true, auto: true }) },
+    bossRunning: Boolean,
+    remote: { type: Object, default: () => ({}) },
+    hostLocal: { type: Boolean, default: true },
+    remoteBusy: Boolean,
   },
   emits: [
     'update:tab',
@@ -101,12 +123,20 @@ export default {
     'refresh',
     'free',
     'stop',
+    'open-roles',
+    'preset',
+    'run-boss',
+    'toggle-boss-auto',
+    'remote-toggle',
+    'remote-rotate',
+    'copy-remote',
   ],
   data() {
     return {
       tabs: [
         { id: 'stage', label: 'STAGE' },
         { id: 'crew', label: 'CREW' },
+        { id: 'boss', label: 'BOSS' },
         { id: 'setup', label: 'SETUP' },
       ],
     }
@@ -152,6 +182,17 @@ export default {
 .tabs > button.on {
   border-bottom-color: var(--mint);
   color: var(--mint);
+}
+
+.due-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 7px var(--amber);
+  vertical-align: 1px;
 }
 
 .count {

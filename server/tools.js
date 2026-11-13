@@ -24,7 +24,7 @@ export const TOOL_DEFS = [
     function: {
       name: 'list_files',
       description:
-        'List files and folders inside the Huddle workspace. Use a path relative to the workspace root.',
+        'List files and folders inside the Rally Up Bots workspace. Use a path relative to the workspace root.',
       parameters: {
         type: 'object',
         properties: {
@@ -326,7 +326,7 @@ export async function runTool(name, args = {}, context = {}) {
       const url = new URL(raw)
       if (!/^https?:$/.test(url.protocol)) throw new Error('Only http and https URLs are allowed.')
       const response = await fetch(url, {
-        headers: { 'user-agent': 'Huddle/0.1 (personal local agent)' },
+        headers: { 'user-agent': 'RallyUpBots/0.1 (personal local agent)' },
         signal: AbortSignal.timeout(15_000),
       })
       if (!response.ok) throw new Error(`HTTP ${response.status} from ${url.hostname}`)

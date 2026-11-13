@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-const apiPort = process.env.HUDDLE_PORT || '5110'
+const apiPort = process.env.RALLY_PORT || '5110'
 
 export default defineConfig({
   plugins: [vue()],
@@ -11,7 +11,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: Number(process.env.HUDDLE_UI_PORT || 5180),
+    port: Number(process.env.RALLY_UI_PORT || 5180),
     strictPort: true,
     proxy: {
       '/api': {

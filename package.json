@@ -1,24 +1,62 @@
 {
-  "name": "huddle",
+  "name": "rally-up-bots",
+  "productName": "Rally Up Bots",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Huddle — a local-first Robo console for the 2-2-100 crew",
+  "description": "Local-first AI crew console for six Ollama-powered Robos that debate, use tools, and grow under operator control.",
+  "author": "2-2-100 Entertainment L.L.C",
+  "homepage": "https://github.com/criiz2-2-100/huddle#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/criiz2-2-100/huddle.git"
+  },
+  "bugs": {
+    "url": "https://github.com/criiz2-2-100/huddle/issues"
+  },
+  "keywords": [
+    "ai",
+    "ai-agents",
+    "local-first",
+    "multi-agent",
+    "ollama",
+    "offline-first",
+    "self-hosted",
+    "vue",
+    "nodejs"
+  ],
   "engines": {
     "node": ">=18"
   },
+  "bin": {
+    "rally-up-bots": "./bin/rally-up-bots.js"
+  },
+  "files": [
+    "bin/",
+    "server/",
+    "skill-packs/",
+    "web/dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "vite build",
+    "desktop:build": "npm run build && node scripts/build-desktop.mjs",
     "start": "node server/index.js",
-    "server": "node server/index.js"
+    "server": "node server/index.js",
+    "prepack": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "vue": "^3.4.0"
   },
   "devDependencies": {
+    "@electron/packager": "^20.3.0",
     "@vitejs/plugin-vue": "^5.2.4",
+    "electron": "^45.2.3",
     "vite": "^5.0.0"
   }
 }
